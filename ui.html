@@ -4,41 +4,44 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Agents: Go</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='70' height='70' x='15' y='15' rx='14' fill='%236ee7b7'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='12' y='12' width='50' height='50' rx='10' fill='%236ee7b7' opacity='.4'/><rect x='38' y='38' width='50' height='50' rx='10' fill='%236ee7b7'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#09090f;--s1:#111118;--s2:#191920;--s3:#21212c;--bd:#2a2a3a;--bd2:#3a3a4e;--t:#eaeaf0;--t2:#9294aa;--t3:#5a5a70;--ac:#6ee7b7;--ac2:#34d399;--ac3:rgba(110,231,183,.08);--rd:#f87171;--rd3:rgba(248,113,113,.08);--am:#fbbf24;--bl:#60a5fa;--pr:#a78bfa;--pk:#f472b6}
+:root{--bg:#08090d;--s1:#0f1017;--s2:#161720;--s3:#1d1e2a;--bd:#262838;--bd2:#363850;--t:#ededf4;--t2:#9496b0;--t3:#5c5e76;--ac:#6ee7b7;--ac2:#34d399;--ac3:rgba(110,231,183,.08);--rd:#f87171;--rd3:rgba(248,113,113,.08);--am:#fbbf24;--bl:#60a5fa;--pr:#a78bfa;--pk:#f472b6}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--t);font-family:"Instrument Sans",-apple-system,sans-serif;min-height:100vh;-webkit-font-smoothing:antialiased}
+body{background:var(--bg);background-image:radial-gradient(ellipse at 50% 0%,rgba(110,231,183,.03) 0%,transparent 50%);color:var(--t);font-family:"Instrument Sans",-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
 ::selection{background:var(--ac);color:var(--bg)}
-::-webkit-scrollbar{width:6px}
-::-webkit-scrollbar-track{background:var(--s1)}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--bd);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--bd2)}
 a{color:var(--ac);text-decoration:none}
 a:hover{text-decoration:underline}
 
 /* Header */
 .top{background:var(--s1);border-bottom:1px solid var(--bd);padding:14px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
-.top h1{font-family:"JetBrains Mono",monospace;font-size:17px;font-weight:600;letter-spacing:-.3px}
-.top h1 b{color:var(--ac)}
-.top-sub{font-size:11px;color:var(--t3);font-family:"JetBrains Mono",monospace;margin-top:2px}
-.top-tag{font-size:10px;color:var(--t3);font-family:"JetBrains Mono",monospace;font-style:italic;margin-top:1px}
+.top-l{display:flex;align-items:center;gap:12px}
+.logo-mark{flex-shrink:0}
+.top h1{font-family:"JetBrains Mono",monospace;font-size:16px;font-weight:700;letter-spacing:.5px}
+.top h1 span{color:var(--ac)}
+.top-meta{display:flex;flex-direction:column;gap:1px}
+.top-sub{font-size:11px;color:var(--t3);font-family:"JetBrains Mono",monospace}
 .top-r{display:flex;align-items:center;gap:12px}
 
 /* Status */
 .pill{display:inline-flex;align-items:center;gap:7px;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:600;font-family:"JetBrains Mono",monospace;letter-spacing:.3px}
 .pill.on{background:var(--ac3);color:var(--ac)}
 .pill.off{background:var(--rd3);color:var(--rd)}
-.pill i{width:8px;height:8px;border-radius:50%;display:inline-block}
-.pill.on i{background:var(--ac);animation:pu 2s infinite}
+.pill i{width:7px;height:7px;border-radius:50%;display:inline-block}
+.pill.on i{background:var(--ac);box-shadow:0 0 8px rgba(110,231,183,.5);animation:pu 2s infinite}
 .pill.off i{background:var(--rd)}
 .rbadge{font-family:"JetBrains Mono",monospace;font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(251,191,36,.1);color:var(--am)}
 @keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}
 
 /* Tabs */
-.tabs{display:flex;gap:0;border-bottom:1px solid var(--bd);background:var(--s1);padding:0 28px;position:sticky;top:55px;z-index:99}
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--bd);background:var(--s1);padding:0 28px;position:sticky;top:53px;z-index:99}
 .tab{font-family:"JetBrains Mono",monospace;font-size:12px;padding:12px 20px;cursor:pointer;color:var(--t3);border-bottom:2px solid transparent;transition:all .15s;background:none;border-top:none;border-left:none;border-right:none;outline:none}
 .tab:hover{color:var(--t2)}
 .tab.on{color:var(--ac);border-bottom-color:var(--ac)}
@@ -47,7 +50,7 @@ a:hover{text-decoration:underline}
 .W{max-width:1040px;margin:0 auto;padding:28px 24px}
 
 /* Cards */
-.card{background:var(--s1);border:1px solid var(--bd);border-radius:10px;padding:22px;margin-bottom:18px}
+.card{background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:22px;margin-bottom:18px;box-shadow:0 2px 12px rgba(0,0,0,.2)}
 .card-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
 .card-t{font-family:"JetBrains Mono",monospace;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1.5px;color:var(--t3)}
 
@@ -67,7 +70,7 @@ a:hover{text-decoration:underline}
 .b:disabled{opacity:.35;cursor:not-allowed;transform:none}
 
 /* Projects */
-.pj{background:var(--s2);border:1px solid var(--bd);border-radius:9px;padding:18px;margin-bottom:14px}
+.pj{background:var(--s2);border:1px solid var(--bd);border-radius:10px;padding:18px;margin-bottom:14px}
 .pj:last-child{margin-bottom:0}
 .pj-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px}
 .pj-nm{font-family:"JetBrains Mono",monospace;font-size:16px;font-weight:700}
@@ -76,8 +79,8 @@ a:hover{text-decoration:underline}
 
 /* Agent grid */
 .ag-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
-.ag{background:var(--s3);border:1px solid var(--bd);border-radius:8px;padding:14px;transition:border-color .15s}
-.ag:hover{border-color:var(--bd2)}
+.ag{background:var(--s3);border:1px solid var(--bd);border-radius:8px;padding:14px;transition:all .15s}
+.ag:hover{border-color:var(--bd2);box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .ag.off{opacity:.35}
 .ag-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
 .ag-nm{font-family:"JetBrains Mono",monospace;font-size:16px;font-weight:700}
@@ -132,11 +135,11 @@ a:hover{text-decoration:underline}
 .pgr span{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--t2)}
 
 /* Overlay */
-.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:200;padding:40px 20px;overflow-y:auto}
+.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:200;padding:40px 20px;overflow-y:auto}
 .ov.open{display:flex;justify-content:center;align-items:flex-start}
 
 /* Modal */
-.md{background:var(--s1);border:1px solid var(--bd);border-radius:12px;max-width:700px;width:100%;max-height:82vh;overflow:hidden;display:flex;flex-direction:column}
+.md{background:var(--s1);border:1px solid var(--bd);border-radius:12px;max-width:700px;width:100%;max-height:82vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 16px 48px rgba(0,0,0,.4)}
 .md-h{padding:16px 20px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center}
 .md-h h3{font-family:"JetBrains Mono",monospace;font-size:13px}
 .md-b{padding:20px;overflow-y:auto;flex:1}
@@ -145,22 +148,24 @@ a:hover{text-decoration:underline}
 /* Forms */
 .fg{margin-bottom:14px}
 .fl{font-family:"JetBrains Mono",monospace;font-size:11px;font-weight:500;color:var(--t3);margin-bottom:5px;display:block;text-transform:uppercase;letter-spacing:1px}
-.fi{width:100%;padding:9px 12px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t);font-family:"Instrument Sans",sans-serif;font-size:13px;outline:none}
+.fi{width:100%;padding:9px 12px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t);font-family:"Instrument Sans",sans-serif;font-size:13px;outline:none;transition:border-color .15s,box-shadow .15s}
 .fi:focus{border-color:var(--ac);box-shadow:0 0 0 3px rgba(110,231,183,.08)}
 .fi::placeholder{color:var(--t3)}
 .fa{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
 
 /* About */
-.as{background:var(--s1);border:1px solid var(--bd);border-radius:10px;padding:22px;margin-bottom:18px}
+.about-intro{color:var(--t2);font-size:13px;line-height:1.7;margin-bottom:20px;padding:16px 20px;background:var(--s1);border:1px solid var(--bd);border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.2)}
+.about-intro strong{color:var(--ac);font-weight:600}
+.as{background:var(--s1);border:1px solid var(--bd);border-radius:10px;padding:22px;margin-bottom:18px;box-shadow:0 2px 12px rgba(0,0,0,.2)}
 .as pre{font-family:"JetBrains Mono",monospace;font-size:11px;line-height:1.8;white-space:pre-wrap;color:var(--t2)}
 .as-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .as-lb{font-family:"JetBrains Mono",monospace;font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--t3)}
 
 /* Toast */
-.toast{position:fixed;bottom:20px;right:20px;padding:10px 18px;border-radius:8px;font-family:"JetBrains Mono",monospace;font-size:12px;z-index:300;animation:si .25s ease;background:var(--s1);border:1px solid var(--bd);color:var(--t)}
+.toast{position:fixed;bottom:20px;right:20px;padding:10px 18px;border-radius:8px;font-family:"JetBrains Mono",monospace;font-size:12px;z-index:300;animation:si .3s ease;background:var(--s1);border:1px solid var(--bd);color:var(--t);box-shadow:0 4px 16px rgba(0,0,0,.3)}
 .toast.ok{border-color:var(--ac)}
 .toast.err{border-color:var(--rd)}
-@keyframes si{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes si{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
 
 /* Empty state */
 .empty{color:var(--t3);font-size:13px;text-align:center;padding:32px 0}
@@ -168,28 +173,41 @@ a:hover{text-decoration:underline}
 /* Footer */
 .footer{text-align:center;padding:32px 0 16px;font-size:12px;color:var(--t3);font-family:"JetBrains Mono",monospace}
 
-/* Onboarding */
-.ob-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);z-index:500;justify-content:center;align-items:center;padding:20px}
+/* ═══ Onboarding ═══ */
+.ob-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);z-index:500;justify-content:center;align-items:center;padding:20px}
 .ob-ov.open{display:flex}
-.ob{background:var(--s1);border:1px solid var(--bd);border-radius:16px;max-width:540px;width:100%;padding:40px 36px 32px;text-align:center;position:relative;overflow:hidden}
-.ob::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--ac),var(--bl),var(--pr),var(--pk))}
-.ob h2{font-family:"JetBrains Mono",monospace;font-size:22px;margin-bottom:10px;font-weight:600}
+.ob-ov.open .ob{animation:obCardIn .4s ease}
+.ob{background:linear-gradient(180deg,#12131e 0%,#0d0e16 100%);border:1px solid rgba(110,231,183,.12);border-radius:20px;max-width:520px;width:100%;padding:44px 40px 32px;text-align:center;position:relative;overflow:hidden;box-shadow:0 0 80px rgba(110,231,183,.04),0 24px 64px rgba(0,0,0,.5)}
+.ob::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent 0%,var(--ac) 30%,var(--bl) 50%,var(--pr) 70%,transparent 100%)}
+.ob h2{font-family:"JetBrains Mono",monospace;font-size:24px;margin-bottom:12px;font-weight:700;letter-spacing:-.3px}
 .ob h2 b{color:var(--ac);font-weight:700}
-.ob p{color:var(--t2);font-size:14px;line-height:1.75;margin-bottom:14px}
-.ob .step{display:none;animation:obFade .3s ease}
-.ob .step.active{display:block}
-.ob-icon{width:56px;height:56px;border-radius:14px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:20px}
-.ob-lead{font-size:15px!important;font-style:italic;color:var(--t3)!important;margin-bottom:6px!important}
-.ob-note{margin-top:16px;padding:12px 16px;background:var(--s2);border:1px solid var(--bd);border-radius:8px;font-size:13px;color:var(--t2);line-height:1.6}
-.ob code{background:var(--s3);padding:2px 8px;border-radius:4px;font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--ac)}
-.ob ul,.ob ol{text-align:left;margin:10px 0 16px 20px;color:var(--t2);font-size:13px;line-height:2}
+.ob p{color:var(--t2);font-size:14.5px;line-height:1.8;margin-bottom:16px}
+.ob .step{display:none;flex-direction:column;align-items:center;min-height:310px;justify-content:center}
+.ob .step.active{display:flex;animation:obFade .35s ease}
+.ob-icon{width:60px;height:60px;border-radius:16px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:24px}
+.ob-lead{font-size:15px!important;color:var(--t3)!important;margin-bottom:8px!important;letter-spacing:.3px}
+.ob code{background:rgba(110,231,183,.08);padding:3px 10px;border-radius:5px;font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--ac);border:1px solid rgba(110,231,183,.15)}
+.ob ul,.ob ol{text-align:left;margin:8px 0 16px 0;padding-left:20px;color:var(--t2);font-size:13.5px;line-height:2.1;list-style:none}
+.ob ul li::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--ac);margin-right:10px;vertical-align:middle;opacity:.6}
+.ob ol{counter-reset:ob-counter;padding-left:0}
+.ob ol li{counter-increment:ob-counter;padding-left:28px;position:relative}
+.ob ol li::before{content:counter(ob-counter);position:absolute;left:0;width:20px;height:20px;border-radius:6px;background:rgba(110,231,183,.1);color:var(--ac);font-family:"JetBrains Mono",monospace;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;top:4px}
 .ob li{padding-left:4px}
 .ob strong{color:var(--t);font-weight:600}
-.ob-dots{display:flex;gap:8px;justify-content:center;margin:24px 0 20px}
-.ob-dot{width:8px;height:8px;border-radius:50%;background:var(--bd);transition:all .2s}
-.ob-dot.on{background:var(--ac);transform:scale(1.25)}
-.ob-credits{margin-top:20px;padding-top:16px;border-top:1px solid var(--bd);font-size:12px;color:var(--t3)}
-@keyframes obFade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.ob-bookmark{margin-top:20px;display:flex;align-items:center;justify-content:center;gap:10px;padding:14px 18px;background:rgba(110,231,183,.04);border:1px solid rgba(110,231,183,.12);border-radius:10px}
+.ob-bookmark code{margin:0;border:none;background:none;padding:0;font-size:13px;font-weight:500}
+.ob-copy{font-family:"JetBrains Mono",monospace;font-size:10px;font-weight:600;padding:4px 12px;border-radius:6px;border:1px solid rgba(110,231,183,.25);background:rgba(110,231,183,.08);color:var(--ac);cursor:pointer;transition:all .15s;text-transform:uppercase;letter-spacing:.5px}
+.ob-copy:hover{background:rgba(110,231,183,.18)}
+.ob-dots{display:flex;gap:6px;justify-content:center;margin:28px 0 22px}
+.ob-dot{width:6px;height:6px;border-radius:50%;background:var(--bd);transition:all .25s}
+.ob-dot.on{background:var(--ac);box-shadow:0 0 8px rgba(110,231,183,.4);width:20px;border-radius:3px}
+.ob-credits{margin-top:24px;padding-top:18px;border-top:1px solid rgba(255,255,255,.06);font-size:12px;color:var(--t3)}
+.ob-credits a{color:var(--ac)}
+.ob-note{margin-top:16px;padding:14px 18px;background:rgba(248,113,113,.04);border:1px solid rgba(248,113,113,.12);border-radius:10px;font-size:13px;color:var(--t2);line-height:1.7;text-align:left}
+.ob-note strong{color:var(--am)}
+
+@keyframes obFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes obCardIn{from{opacity:0;transform:scale(.96) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
 
 .hidden{display:none}
 </style>
@@ -198,10 +216,15 @@ a:hover{text-decoration:underline}
 
 <!-- Header -->
 <div class="top">
-  <div>
-    <h1><b>&#9632;</b> AGENTS: GO</h1>
-    <div class="top-sub" id="sub">Loading...</div>
-    <div class="top-tag">autonomous agent scheduler</div>
+  <div class="top-l">
+    <svg class="logo-mark" width="28" height="28" viewBox="0 0 24 24" fill="none">
+      <rect x="2" y="2" width="13" height="13" rx="3" fill="#6ee7b7" opacity=".35"/>
+      <rect x="9" y="9" width="13" height="13" rx="3" fill="#6ee7b7"/>
+    </svg>
+    <div class="top-meta">
+      <h1><span>AGENTS</span>: GO</h1>
+      <div class="top-sub" id="sub">Loading...</div>
+    </div>
   </div>
   <div class="top-r">
     <span class="rbadge hidden" id="rb"></span>
@@ -251,6 +274,7 @@ a:hover{text-decoration:underline}
 
 <!-- About -->
 <div id="p2" class="W hidden">
+  <div class="about-intro">Copy these sections and add them to your project files so your agents understand the setup. Use the <strong>Copy</strong> button on each section.</div>
   <div class="as">
     <div class="as-hd">
       <span class="as-lb">Setup Guide</span>
@@ -290,81 +314,86 @@ a:hover{text-decoration:underline}
 
       <!-- 1: Welcome -->
       <div class="step active">
-        <div class="ob-icon" style="background:rgba(110,231,183,.1);color:#6ee7b7">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        <div class="ob-icon" style="background:rgba(110,231,183,.08);color:#6ee7b7">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+            <rect x="2" y="2" width="12" height="12" rx="2.5" fill="currentColor" opacity=".35"/>
+            <rect x="10" y="10" width="12" height="12" rx="2.5" fill="currentColor"/>
+          </svg>
         </div>
         <h2><b>Agents:</b> Go</h2>
-        <p class="ob-lead">Your autonomous Claude Code agent scheduler</p>
-        <p>Run agents on autopilot, day or night. Each agent gets a fresh session, reads its own project context, does its work, and exits cleanly.</p>
-        <div class="ob-note">Bookmark <code>http://localhost:3847</code> &mdash; this is your single command center. It auto-starts on login and persists across reboots.</div>
+        <p class="ob-lead">Autonomous agent scheduler for Claude Code</p>
+        <p>Schedule and run Claude Code agents across multiple projects. They operate on autopilot &mdash; each agent reads its own project context, executes its tasks, and exits cleanly.</p>
+        <div class="ob-bookmark">
+          <code>http://localhost:3847</code>
+          <button class="ob-copy" onclick="cpURL(this)">Copy</button>
+        </div>
       </div>
 
       <!-- 2: Add Projects -->
       <div class="step">
-        <div class="ob-icon" style="background:rgba(96,165,250,.1);color:#60a5fa">
+        <div class="ob-icon" style="background:rgba(96,165,250,.08);color:#60a5fa">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
         </div>
         <h2>Add <b>Projects</b></h2>
-        <p>Click <code>+ Add Project</code> on the Dashboard. Provide a name and the full path to your code directory.</p>
-        <p>You can add multiple projects &mdash; each gets its own set of agents with completely independent schedules.</p>
+        <p>This scheduler manages multiple projects simultaneously. Each project points to a code directory and gets its own independent set of agents and schedules.</p>
+        <p>Click <code>+ Add Project</code> on the Dashboard to get started. You can add as many projects as you need.</p>
       </div>
 
       <!-- 3: Add Agents -->
       <div class="step">
-        <div class="ob-icon" style="background:rgba(167,139,250,.1);color:#a78bfa">
+        <div class="ob-icon" style="background:rgba(167,139,250,.08);color:#a78bfa">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
         </div>
         <h2>Add <b>Agents</b></h2>
-        <p>Click <code>+ Agent</code> on any project. Name your agent and write an invocation prompt &mdash; that's what the agent sees when summoned.</p>
+        <p>Create agents within each project. Give them a name and an invocation prompt &mdash; the instruction they receive when summoned.</p>
         <ul>
-          <li>Agents read their own project files &mdash; they already know what to do</li>
-          <li>Every session is fresh and stateless &mdash; no memory bleed</li>
-          <li>Use <strong>Invoke Now</strong> to test any agent live in Terminal</li>
+          <li>Agents read their own project and persona files to understand their role and act accordingly</li>
+          <li>Every session is completely fresh &mdash; no state or memory carries over between runs</li>
+          <li>Set how often each agent runs: which hours, which days, and at what interval</li>
         </ul>
       </div>
 
       <!-- 4: Set Schedule -->
       <div class="step">
-        <div class="ob-icon" style="background:rgba(251,191,36,.1);color:#fbbf24">
+        <div class="ob-icon" style="background:rgba(251,191,36,.08);color:#fbbf24">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </div>
         <h2>Set <b>Schedule</b></h2>
         <p>Configure exactly when each agent runs with three controls:</p>
         <ul>
-          <li><strong>Hours</strong> &mdash; Toggle any combination of 0&ndash;23 (your local time)</li>
-          <li><strong>Days</strong> &mdash; Monday through Sunday toggles</li>
+          <li><strong>Hours</strong> &mdash; Toggle any combination of 0&ndash;23 in your local time</li>
+          <li><strong>Days</strong> &mdash; Select which days of the week, Monday through Sunday</li>
           <li><strong>Interval</strong> &mdash; Every 15, 30, 45, or 60 minutes within each active hour</li>
         </ul>
       </div>
 
       <!-- 5: Watchouts -->
       <div class="step">
-        <div class="ob-icon" style="background:rgba(248,113,113,.1);color:#f87171">
+        <div class="ob-icon" style="background:rgba(248,113,113,.08);color:#f87171">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         </div>
         <h2><b>Watchouts</b></h2>
-        <ul>
-          <li><strong>Token Usage</strong> &mdash; Each session consumes API tokens. An agent at 15-min intervals across 8 hours = 32 sessions. Start conservative with 60-min intervals.</li>
-          <li><strong>Storage</strong> &mdash; No sessions persist between runs. Logs auto-clean after 14 days.</li>
-          <li><strong>First Run</strong> &mdash; Claude Code shows a permissions bypass warning once. Accept it &mdash; it remembers permanently.</li>
-          <li><strong>Stuck Agents</strong> &mdash; Use the <strong>Kill All Running</strong> button on the Dashboard.</li>
-        </ul>
+        <div class="ob-note">
+          <strong>Token Usage</strong> &mdash; Each agent session consumes API tokens. An agent at 15-min intervals across 8 hours burns 32 sessions per night. Start conservative with 60-min intervals and monitor your Anthropic usage dashboard.<br><br>
+          <strong>Memory &amp; Storage</strong> &mdash; No state persists between agent sessions. Sprint logs are kept for 14 days, then automatically cleaned up.<br><br>
+          <strong>First Run</strong> &mdash; Claude Code will show a one-time permissions bypass warning. Select "Yes, I accept" &mdash; it remembers permanently.<br><br>
+          <strong>Stuck Agents</strong> &mdash; Use the "Kill All Running" button on the Dashboard to terminate any hung sessions.
+        </div>
       </div>
 
       <!-- 6: Get Started -->
       <div class="step">
-        <div class="ob-icon" style="background:rgba(110,231,183,.1);color:#6ee7b7">
+        <div class="ob-icon" style="background:rgba(110,231,183,.08);color:#6ee7b7">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         </div>
         <h2>Get <b>Started</b></h2>
-        <p>You're all set. The workflow is simple:</p>
         <ol>
           <li>Add a project</li>
           <li>Add agents to it</li>
           <li>Set their schedule</li>
           <li>Hit <strong>Start</strong></li>
         </ol>
-        <p>The scheduler persists across reboots. Check <strong>Logs</strong> for results and <strong>About</strong> for copyable configuration docs.</p>
+        <p>Use the <strong>About</strong> tab to copy configuration docs and share them with your agents so they understand the setup.</p>
         <div class="ob-credits">Developed by Waqas Burney &amp; Claude &middot; <a href="https://github.com/sumatranbeans/agents-go">GitHub</a></div>
       </div>
 
@@ -394,6 +423,7 @@ function msg(s,t){var e=document.createElement("div");e.className="toast "+(t||"
 function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
 function gid(n){return n.toLowerCase().replace(/[^a-z0-9]+/g,"-")}
 function fd(s){return s<60?s+"s":Math.floor(s/60)+"m "+s%60+"s"}
+function cpURL(btn){navigator.clipboard.writeText("http://localhost:3847").then(function(){if(btn){btn.textContent="Copied!";setTimeout(function(){btn.textContent="Copy"},2000)}msg("URL copied!")})}
 
 /* === Tabs === */
 function T(n){
@@ -411,6 +441,7 @@ function initOB(){
   if(obDone)return;
   var c=cfg||{};
   if(c.onboarded){obDone=true;return}
+  if(document.getElementById("OB").classList.contains("open"))return;
   document.getElementById("OB").classList.add("open");
   obStep=0;rOB();
 }
@@ -443,7 +474,7 @@ function R(){
     document.getElementById("bOff").disabled=!d.loaded;
     var ta=0,aa=0;
     cfg.projects.forEach(function(p){ta+=(p.agents||[]).length;(p.agents||[]).forEach(function(a){if(a.enabled)aa++})});
-    document.getElementById("sub").textContent=cfg.projects.length+" project"+(cfg.projects.length!==1?"s":"")+"  "+aa+"/"+ta+" agents";
+    document.getElementById("sub").textContent=cfg.projects.length+" project"+(cfg.projects.length!==1?"s":"")+" · "+aa+"/"+ta+" agents";
     var rn=d.running||[];
     var rb=document.getElementById("rb"),bk=document.getElementById("bK");
     if(rn.length){rb.textContent=rn.length+" running";rb.className="rbadge";bk.className="b warn"}
