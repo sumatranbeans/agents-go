@@ -54,12 +54,14 @@ a:hover{text-decoration:underline}
 /* Buttons */
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .b{font-family:var(--mono);font-size:12px;font-weight:500;padding:8px 16px;border-radius:8px;border:1px solid var(--bd);background:var(--s2);color:var(--t);cursor:pointer;transition:all .15s;white-space:nowrap;outline:none}
-.b:hover{background:var(--s3);border-color:var(--bd2);transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.2)}
-.b:active{transform:translateY(0);box-shadow:none}
+.b:hover{background:var(--s3);border-color:var(--bd2)}
+.b:active{opacity:.8}
 .b:focus-visible{outline:2px solid var(--ac);outline-offset:2px;box-shadow:0 0 0 4px var(--bg)}
 .b.sm{padding:5px 10px;font-size:11px}
 .b.go{background:var(--ac);color:var(--bg);border-color:var(--ac);font-weight:600}
-.b.go:hover{background:var(--ac2);border-color:var(--ac2);box-shadow:0 4px 16px rgba(110,231,183,.3)}
+.b.go:hover{background:var(--ac2);border-color:var(--ac2)}
+.b.go-o{border-color:var(--ac);color:var(--ac)}
+.b.go-o:hover{background:var(--ac3)}
 .b.no{border-color:var(--rd);color:var(--rd)}
 .b.no:hover{background:var(--rd3)}
 .b.warn{border-color:var(--am);color:var(--am)}
@@ -91,7 +93,7 @@ a:hover{text-decoration:underline}
 .hc:hover{border-color:var(--t2)}
 
 /* Schedule layout */
-.sched{margin:0}
+.sched{margin:0;padding-top:10px;border-top:1px solid var(--gbr)}
 .sched-row{display:flex;align-items:center;gap:6px;margin-bottom:6px}
 .sched-lb{font-family:var(--mono);font-size:9px;color:var(--t3);min-width:30px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;flex-shrink:0}
 .sched-u{font-family:var(--mono);font-size:9px;color:var(--t3)}
@@ -178,8 +180,17 @@ a:hover{text-decoration:underline}
 .empty .empty-title{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--t2);margin-bottom:4px}
 .empty .empty-sub{font-size:12px;color:var(--t3)}
 
+/* Agent footer */
+.ag-foot{display:flex;align-items:center;justify-content:space-between;margin-top:10px}
+.ag-inv{display:flex;align-items:center;gap:5px;cursor:pointer}
+.ag-inv span{font-family:var(--mono);font-size:8px;color:var(--t3);letter-spacing:.3px}
+.ag-inv .tgl-sm{position:relative;width:22px;height:12px;background:var(--bd2);border-radius:6px;cursor:pointer;transition:background .2s;border:none;flex-shrink:0}
+.ag-inv .tgl-sm.on{background:var(--ac)}
+.ag-inv .tgl-sm::after{content:"";position:absolute;top:2px;left:2px;width:8px;height:8px;background:#fff;border-radius:50%;transition:transform .2s}
+.ag-inv .tgl-sm.on::after{transform:translateX(10px)}
+
 /* Next run */
-.ag-next{font-family:var(--mono);font-size:10px;color:var(--ac);margin:10px 0;padding:8px 0;border-top:1px solid var(--gbr);display:flex;align-items:center;gap:6px}
+.ag-next{font-family:var(--mono);font-size:10px;color:var(--ac);margin:10px 0 0;padding:8px 0;border-top:1px solid var(--gbr);display:flex;align-items:center;gap:6px}
 .ag-next svg{flex-shrink:0;opacity:.6}
 .ag-next strong{color:var(--t);font-weight:600}
 .ag-next.off{color:var(--t3)}
@@ -280,7 +291,6 @@ a:hover{text-decoration:underline}
         <button class="b go" id="bOn" onclick="ON()">Start</button>
         <button class="b no" id="bOff" onclick="OFF()">Stop</button>
         <button class="b warn hidden" id="bK" onclick="KILL()">Kill All Running</button>
-        <label class="row" style="gap:6px;cursor:pointer;margin-left:8px"><button class="tgl on" id="visTgl" onclick="TVM()" aria-label="Toggle visible mode"></button><span style="font-family:var(--mono);font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.3px">Run visibly</span></label>
       </div>
       <span class="card-t" id="sched-sum" style="margin:0"></span>
     </div>
@@ -382,8 +392,8 @@ a:hover{text-decoration:underline}
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
         </div>
         <h2>Add <b>Projects</b></h2>
-        <p>Point each project to the code directory where Claude Code operates. This is where your agents will <code>cd</code> into before running.</p>
-        <p>You can manage multiple projects simultaneously &mdash; each with its own agents and independent schedules.</p>
+        <p>Point each project to the local directory where Claude Code operates. This is where your agents will <code>cd</code> into before running.</p>
+        <p>You can manage multiple projects simultaneously, each with its own agents and independent schedules.</p>
       </div>
 
       <!-- 3: Add Agents -->
@@ -392,11 +402,8 @@ a:hover{text-decoration:underline}
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
         </div>
         <h2>Add <b>Agents</b></h2>
-        <p>Create agents within each project. Give them a name and an invocation prompt &mdash; the instruction they receive when summoned.</p>
-        <ul>
-          <li>Agents read their own project and persona files to understand their role &mdash; you need to set these up in your codebase</li>
-          <li>Every session is completely fresh &mdash; no state or memory carries over between runs</li>
-        </ul>
+        <p>Create agents within each project. Give them a name and an invocation prompt (the instruction they receive when summoned).</p>
+        <p>You need to set up your agent personas and tasks in your codebase before scheduling them here. Every session is completely fresh with no state or memory carrying over between runs.</p>
       </div>
 
       <!-- 4: Set Schedule -->
@@ -407,9 +414,9 @@ a:hover{text-decoration:underline}
         <h2>Set <b>Schedule</b></h2>
         <p>Configure how often each agent runs:</p>
         <ul>
-          <li><strong>Hours</strong> &mdash; Which hours of the day (AM/PM, your local time)</li>
-          <li><strong>Days</strong> &mdash; Which days of the week</li>
-          <li><strong>Interval</strong> &mdash; Every 15, 30, 45, or 60 minutes within active hours</li>
+          <li><strong>Days</strong> of the week</li>
+          <li><strong>Hours</strong> of the day (AM/PM, your local time)</li>
+          <li><strong>Interval</strong>: every 15, 30, 45, or 60 minutes within active hours</li>
         </ul>
       </div>
 
@@ -420,10 +427,10 @@ a:hover{text-decoration:underline}
         </div>
         <h2><b>Watchouts</b></h2>
         <ul>
-          <li><strong>Tokens</strong> &mdash; Each session burns API tokens. Start with 60-min intervals and monitor your Anthropic usage dashboard.</li>
-          <li><strong>Storage</strong> &mdash; No state persists between runs. Logs auto-clean after 14 days.</li>
-          <li><strong>First Run</strong> &mdash; Accept the one-time Claude Code permissions prompt. It remembers permanently.</li>
-          <li><strong>Stuck Agents</strong> &mdash; Hit "Kill All Running" on the Dashboard.</li>
+          <li><strong>Tokens:</strong> Each session burns API tokens. Start with 60-min intervals and monitor your <a href="https://claude.ai/settings/usage" target="_blank">Anthropic usage dashboard</a>.</li>
+          <li><strong>Permissions:</strong> Claude Code requires a one-time permissions acceptance on first run. It remembers permanently.</li>
+          <li><strong>Storage:</strong> No state persists between runs. Logs auto-clean after 14 days.</li>
+          <li><strong>Stuck Agents:</strong> Use "Kill All Running" on the Dashboard.</li>
         </ul>
       </div>
 
@@ -437,9 +444,9 @@ a:hover{text-decoration:underline}
           <li>Add a project</li>
           <li>Add agents to it</li>
           <li>Set their schedule</li>
-          <li>Hit <strong>Start</strong></li>
+          <li>Enable the scheduler</li>
         </ol>
-        <p>Use the <strong>About</strong> tab to copy configuration docs and share them with your agents so they understand the setup.</p>
+        <p>Use the <strong>About</strong> tab to copy configuration docs and share them with your agents so they understand the setup and how they will be invoked.</p>
         <div class="ob-credits">Developed by Waqas Burney &amp; Claude &middot; <a href="https://github.com/sumatranbeans/agents-go">GitHub</a></div>
       </div>
 
@@ -465,7 +472,8 @@ var obStep=0,obTotal=6,obDone=false;
 
 /* === Utilities === */
 function Q(u,m,b){m=m||"GET";var o={method:m,headers:{"Content-Type":"application/json"}};if(b)o.body=JSON.stringify(b);return fetch("/api"+u,o).then(function(r){return r.json()})}
-function msg(s,t){var e=document.createElement("div");e.className="toast "+(t||"ok");var sp=document.createElement("span");sp.textContent=s;e.appendChild(sp);if(t==="err"){var x=document.createElement("button");x.className="toast-x";x.innerHTML="&#10005;";x.onclick=function(){e.remove()};e.appendChild(x)}else{setTimeout(function(){if(e.parentNode)e.remove()},3500)}document.body.appendChild(e)}
+var _toast=null,_toastTimer=null;
+function msg(s,t){if(_toast&&_toast.parentNode)_toast.remove();if(_toastTimer)clearTimeout(_toastTimer);var e=document.createElement("div");e.className="toast "+(t||"ok");var sp=document.createElement("span");sp.textContent=s;e.appendChild(sp);if(t==="err"){var x=document.createElement("button");x.className="toast-x";x.innerHTML="&#10005;";x.onclick=function(){e.remove();_toast=null};e.appendChild(x)}else{_toastTimer=setTimeout(function(){if(e.parentNode)e.remove();_toast=null},3500)}_toast=e;document.body.appendChild(e)}
 function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
 function gid(n){return n.toLowerCase().replace(/[^a-z0-9]+/g,"-")}
 function fd(s){return s<60?s+"s":Math.floor(s/60)+"m "+s%60+"s"}
@@ -490,10 +498,11 @@ function nextRun(ag){
         if(dayOff===0&&h===curH&&mn<=curM)continue;
         var h12=h===0?12:(h>12?h-12:h);var ap=h<12?"AM":"PM";
         var ms=mn<10?"0"+mn:""+mn;
-        var label;
+        var label;var dn={1:"Mon",2:"Tue",3:"Wed",4:"Thu",5:"Fri",6:"Sat",7:"Sun"};
         if(dayOff===0)label="Today "+h12+":"+ms+" "+ap;
+        else if(dayOff===1&&h<6)label="Tonight "+h12+":"+ms+" "+ap;
         else if(dayOff===1)label="Tomorrow "+h12+":"+ms+" "+ap;
-        else{var dn={1:"Mon",2:"Tue",3:"Wed",4:"Thu",5:"Fri",6:"Sat",7:"Sun"};label=dn[dow]+" "+h12+":"+ms+" "+ap}
+        else label=dn[dow]+" "+h12+":"+ms+" "+ap;
         return{text:label,off:false};
       }
     }
@@ -556,16 +565,13 @@ function R(){
     cfg.projects.forEach(function(p){ta+=(p.agents||[]).length;(p.agents||[]).forEach(function(a){if(a.enabled)aa++})});
     var rn=d.running||[];var nrn=rn.length;var np=cfg.projects.length;
     var parts=[];
-    if(nrn)parts.push(nrn+" running");
-    parts.push(aa+" active");
-    parts.push(ta+" total");
+    if(nrn){parts.push(nrn+" agent"+(nrn!==1?"s":"")+" running");parts.push(aa+" active");parts.push(ta+" total")}
+    else{parts.push(aa+" active agent"+(aa!==1?"s":""));parts.push(ta+" total")}
     parts.push(np+" project"+(np!==1?"s":""));
     document.getElementById("sched-sum").textContent=parts.join(" · ");
     var rb=document.getElementById("rb"),bk=document.getElementById("bK");
     if(nrn){rb.textContent=nrn+" running";rb.className="rbadge";bk.className="b warn"}
     else{rb.className="rbadge hidden";bk.className="b warn hidden"}
-    var vt=document.getElementById("visTgl");
-    vt.className="tgl"+(cfg.visibleMode!==false?" on":"");
     rW(d.diagnostics||{});rP();initOB();
   });
 }
@@ -591,11 +597,11 @@ function rP(){
       var dch="";[1,2,3,4,5,6,7].forEach(function(d){var days=ag.days||[1,2,3,4,5,6,7];dch+='<button class="dc'+(days.indexOf(d)>=0?" on":"")+'" onclick="tD('+pi+','+ai+','+d+')">'+DN[d]+'</button>'});
       var ich="";[15,30,45,60].forEach(function(v){var cur=ag.interval||60;ich+='<button class="dc'+(cur===v?" on":"")+'" onclick="tI('+pi+','+ai+','+v+')">'+v+'</button>'});
       var nr=nextRun(ag);var nrHtml='<div class="ag-next'+(nr.off?" off":"")+'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'+(nr.off?nr.text:'Next scheduled at: <strong>'+nr.text+'</strong>')+'</div>';
-      cs+='<div class="ag'+(ag.enabled?"":" off")+'"><div class="ag-top"><span class="ag-nm '+cc+'">'+ag.name+'</span><button class="tgl'+(ag.enabled?" on":"")+'" onclick="tA('+pi+','+ai+')" aria-label="Toggle '+ag.name+'"></button></div><div class="ag-pr" title="Click to edit" onclick="eP('+pi+','+ai+')">'+esc(ag.prompt)+'</div><div class="sched"><div class="sched-row"><span class="sched-lb">Days</span><div class="days">'+dch+'</div></div><div class="sched-row"><span class="sched-lb">Every</span>'+ich+'<span class="sched-u">min</span></div><div class="sched-row"><span class="sched-lb">PM</span><div class="hrs">'+pmCh+'</div></div><div class="sched-row"><span class="sched-lb">AM</span><div class="hrs">'+amCh+'</div></div></div>'+nrHtml+'<div class="row"><button class="b sm go" onclick="IV('+pi+','+ai+')">Invoke Now</button><button class="b sm no" onclick="dA('+pi+','+ai+')">Remove</button></div></div>';
+      var inv=ag.invisible?"on":"";
+      cs+='<div class="ag'+(ag.enabled?"":" off")+'"><div class="ag-top"><span class="ag-nm '+cc+'">'+ag.name+'</span><button class="tgl'+(ag.enabled?" on":"")+'" onclick="tA('+pi+','+ai+')" aria-label="Toggle '+ag.name+'"></button></div><div class="ag-pr" title="Click to edit" onclick="eP('+pi+','+ai+')">'+esc(ag.prompt)+'</div><div class="sched"><div class="sched-row"><span class="sched-lb">Days</span><div class="days">'+dch+'</div></div><div class="sched-row"><span class="sched-lb">Every</span>'+ich+'<span class="sched-u">min</span></div><div class="sched-row"><span class="sched-lb">PM</span><div class="hrs">'+pmCh+'</div></div><div class="sched-row"><span class="sched-lb">AM</span><div class="hrs">'+amCh+'</div></div></div>'+nrHtml+'<div class="ag-foot"><label class="ag-inv" onclick="tIN('+pi+','+ai+')"><button class="tgl-sm '+inv+'" aria-label="Toggle invisible mode for '+ag.name+'"></button><span>Run invisible</span></label><div class="row" style="gap:5px"><button class="b sm go-o" style="padding:3px 8px;font-size:10px" onclick="IV('+pi+','+ai+')">Invoke</button><button class="b sm no" style="padding:3px 8px;font-size:10px" onclick="dA('+pi+','+ai+')">Remove</button></div></div></div>';
     });
     if(!cs)cs='<div class="empty" style="grid-column:1/-1"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/></svg><div class="empty-title">No agents</div><div class="empty-sub">Click + Agent to add one</div></div>';
-    var rm=cfg.projects.length>1?'<button class="b sm no" onclick="dP('+pi+')">Remove</button>':"";
-    a.innerHTML+='<div class="card"><div class="pj"><div class="pj-top"><div><div class="pj-nm">'+esc(pj.name)+'</div><div class="pj-pt">'+esc(pj.path)+'</div></div><div class="pj-btns"><button class="b sm" onclick="aAF('+pi+')">+ Agent</button><button class="b sm" onclick="ePF('+pi+')">Edit</button>'+rm+'</div></div><div class="ag-g">'+cs+'</div></div></div>';
+    a.innerHTML+='<div class="card"><div class="pj"><div class="pj-top"><div><div class="pj-nm">'+esc(pj.name)+'</div><div class="pj-pt">'+esc(pj.path)+'</div></div><div class="pj-btns"><button class="b sm" onclick="aAF('+pi+')">+ Agent</button><button class="b sm" onclick="ePF('+pi+')">Edit</button><button class="b sm no" onclick="dP('+pi+')">Remove</button></div></div><div class="ag-g">'+cs+'</div></div></div>';
   });
 }
 
@@ -646,7 +652,6 @@ function ON(){Q("/scheduler/start","POST").then(function(r){msg(r.ok?"Started":r
 function OFF(){Q("/scheduler/stop","POST").then(function(r){msg(r.ok?"Stopped":r.error,r.ok?"ok":"err");R()})}
 function RUN(){msg("Running...");Q("/sprint/run","POST").then(function(r){msg(r.ok?"Done":"Check logs");R()})}
 function KILL(){cfm("Kill all running sessions?",function(){Q("/kill","POST").then(function(r){msg(r.ok?"Killed":"Error",r.ok?"ok":"err");R()})})}
-function TVM(){cfg.visibleMode=cfg.visibleMode===false?true:false;Q("/config","POST",cfg).then(function(){msg(cfg.visibleMode!==false?"Visible mode":"Background mode");R()})}
 function CLR(){cfm("Delete ALL logs?",function(){Q("/logs/clear","POST").then(function(r){if(r.ok){msg("Cleared");Q("/status").then(function(d){cfg=d.config;logs=d.logs||[];bF();rL()})}else{msg("Error","err")}})})}
 
 /* === Agent Toggles === */
@@ -654,11 +659,12 @@ function tA(p,a){cfg.projects[p].agents[a].enabled=!cfg.projects[p].agents[a].en
 function tH(p,a,h){var hr=cfg.projects[p].agents[a].hours;var i=hr.indexOf(h);if(i>=0)hr.splice(i,1);else hr.push(h);hr.sort(function(a,b){return a-b});Q("/config","POST",cfg).then(function(){R()})}
 function tD(p,a,d){var days=cfg.projects[p].agents[a].days;if(!days){days=[1,2,3,4,5,6,7];cfg.projects[p].agents[a].days=days}var i=days.indexOf(d);if(i>=0)days.splice(i,1);else days.push(d);days.sort();Q("/config","POST",cfg).then(function(){R()})}
 function tI(p,a,v){cfg.projects[p].agents[a].interval=v;Q("/config","POST",cfg).then(function(){msg("Interval: "+v+"min");R()})}
+function tIN(p,a){cfg.projects[p].agents[a].invisible=!cfg.projects[p].agents[a].invisible;Q("/config","POST",cfg).then(function(){msg(cfg.projects[p].agents[a].name+" "+(cfg.projects[p].agents[a].invisible?"invisible":"visible"));R()})}
 
 /* === Invoke / Delete === */
 function IV(p,a){var ag=cfg.projects[p].agents[a],pj=cfg.projects[p];msg("Opening Terminal for "+ag.name+"...");Q("/agent/invoke","POST",{projectPath:pj.path,agentName:ag.name,prompt:ag.prompt});setTimeout(R,3000)}
 function dA(p,a){var ag=cfg.projects[p].agents[a];cfm("Remove "+ag.name+"?",function(){cfg.projects[p].agents.splice(a,1);Q("/config","POST",cfg).then(function(){msg(ag.name+" removed");R()})})}
-function dP(p){var pj=cfg.projects[p];cfm("Remove "+pj.name+"?",function(){cfg.projects.splice(p,1);Q("/config","POST",cfg).then(function(){msg(pj.name+" removed");R()})})}
+function dP(p){var rb=document.getElementById("rb");if(rb&&!rb.classList.contains("hidden")){msg("Stop all running agents first","err");return}var pj=cfg.projects[p];cfm("Remove "+pj.name+" and all its agents?",function(){cfg.projects.splice(p,1);Q("/config","POST",cfg).then(function(){msg(pj.name+" removed");R()})})}
 
 /* === Forms === */
 function aPF(){

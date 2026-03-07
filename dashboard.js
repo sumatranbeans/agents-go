@@ -41,7 +41,10 @@ function saveCfg(c){fs.writeFileSync(CFGPATH,JSON.stringify(c,null,2));genScript
 
 // ── Generate sprint script ─────────────────────────────────────────────────
 function genScript(cfg){
-  var visible = cfg.visibleMode !== false; // default true
+  // Check if any agent uses invisible (background) mode
+  var anyInvisible = false;
+  cfg.projects.forEach(function(p){(p.agents||[]).forEach(function(a){if(a.invisible)anyInvisible=true})});
+
   var L=[];
   L.push("#!/bin/bash");
   L.push("set -euo pipefail");
@@ -61,9 +64,8 @@ function genScript(cfg){
   L.push("# Check if minute aligns with interval: min_ok <interval>");
   L.push('min_ok(){ local iv=$1; [ $(( MIN % iv )) -eq 0 ] && return 0 || return 1; }');
 
-  if (!visible) {
-    // Background mode: headless, no Terminal window
-    L.push("# run_bg <name> <prompt> <project_path> <timeout_seconds>");
+  if (anyInvisible) {
+    // Background mode helper for agents with invisible=true
     L.push("run_bg(){");
     L.push('  local N="$1" P="$2" PP="$3" TO="$4" T0=$(date +%s)');
     L.push('  cd "$PP" || { log "Cannot cd to $PP"; return; }');
@@ -93,7 +95,7 @@ function genScript(cfg){
       var timeout = (interval - 1) * 60; // 1 minute before next scheduled run
       var pr=(a.prompt||a.name+", go.").replace(/"/g,'\\"');
       L.push("if [[ ("+dayCond+") && ("+hrCond+") ]] && min_ok "+interval+";then");
-      if (visible) {
+      if (!a.invisible) {
         // Visible mode: write a self-contained temp script per agent, open in Terminal
         var safeName = a.name.toLowerCase().replace(/[^a-z0-9]/g,"");
         L.push('  log "Summoning '+a.name+' (visible)..."');
@@ -107,32 +109,22 @@ function genScript(cfg){
         L.push('PROJECT_PATH="'+sp+'"');
         L.push('TIMEOUT='+timeout);
         L.push('LOGFILE="$1"');
-        L.push('echo "================================================"');
-        L.push('echo "  AGENTS: GO — Scheduled: $AGENT_NAME"');
-        L.push('echo "  Project: $PROJECT_PATH"');
-        L.push('echo "  Timeout: ${TIMEOUT}s ('+Math.floor(timeout/60)+' min)"');
-        L.push('echo "================================================"');
-        L.push('echo ""');
         L.push('cd "$PROJECT_PATH" || { echo "Cannot cd to $PROJECT_PATH"; exit 1; }');
-        L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Summoning $AGENT_NAME..." | tee -a "$LOGFILE"');
         L.push('echo ""');
+        L.push('echo "  AGENTS: GO — $AGENT_NAME"');
+        L.push('echo "  $(pwd)"');
+        L.push('echo "  Timeout: '+Math.floor(timeout/60)+' min"');
+        L.push('echo ""');
+        L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Summoning $AGENT_NAME..." >> "$LOGFILE"');
+        L.push('# Watchdog: kill claude after timeout');
+        L.push('( sleep $TIMEOUT; for p in $(pgrep -P $$); do kill $p 2>/dev/null; done ) &');
+        L.push('WD=$!');
         L.push('T0=$(date +%s)');
-        L.push('claude --dangerously-skip-permissions "$AGENT_PROMPT" 2>&1 | tee -a "$LOGFILE" &');
-        L.push('CP=$!');
-        L.push('while kill -0 $CP 2>/dev/null; do');
-        L.push('  sleep 5');
-        L.push('  ELAPSED=$(( $(date +%s) - T0 ))');
-        L.push('  if [ $ELAPSED -ge $TIMEOUT ]; then');
-        L.push('    echo "" | tee -a "$LOGFILE"');
-        L.push('    echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Timeout (${ELAPSED}s). Stopping $AGENT_NAME..." | tee -a "$LOGFILE"');
-        L.push('    kill $CP 2>/dev/null; wait $CP 2>/dev/null');
-        L.push('    break');
-        L.push('  fi');
-        L.push('done');
-        L.push('wait $CP 2>/dev/null || true');
+        L.push('# Run claude interactively — full TUI visible');
+        L.push('claude --dangerously-skip-permissions "$AGENT_PROMPT"');
+        L.push('kill $WD 2>/dev/null; wait $WD 2>/dev/null');
         L.push('DUR=$(( $(date +%s) - T0 ))');
-        L.push('echo "" | tee -a "$LOGFILE"');
-        L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $AGENT_NAME ended after ${DUR}s" | tee -a "$LOGFILE"');
+        L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $AGENT_NAME ended after ${DUR}s" >> "$LOGFILE"');
         L.push('sleep 2');
         L.push('exit 0');
         L.push('AGENTEOF');
