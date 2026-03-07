@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // ============================================================================
-// NIGHT CREW DASHBOARD v5
+// AGENTS: GO — Autonomous Claude Code Agents: Go
 // ============================================================================
-// All bugs fixed: launchctl -w flags, no timeout cmd, auto-detect claude path
-// http://localhost:3847
+// Zero dependencies. http://localhost:3847
+// Developed by Waqas Burney & Claude
 // ============================================================================
 
 var http = require("http");
@@ -14,597 +14,166 @@ var os = require("os");
 
 var PORT = 3847;
 var HOME = os.homedir();
-var NCDIR = path.join(HOME, ".night-crew");
+var NCDIR = path.join(HOME, ".agents-go");
 var LOGDIR = path.join(NCDIR, "logs");
 var CFGPATH = path.join(NCDIR, "config.json");
-var SCRIPT = path.join(NCDIR, "agent-sprint.sh");
-var PLIST = "com.waqas.night-crew.plist";
+var SCRIPT = path.join(NCDIR, "sprint.sh");
+var PLIST = "com.agentsgo.plist";
 var PPATH = path.join(HOME, "Library", "LaunchAgents", PLIST);
 
 try { fs.mkdirSync(LOGDIR, { recursive: true }); } catch(e) {}
 
-// ── Auto-detect claude CLI path ────────────────────────────────────────────
+// ── Auto-detect claude CLI ─────────────────────────────────────────────────
 var CLAUDE_PATH = "";
-var SEARCH_PATHS = [
-  "/opt/homebrew/bin/claude",
-  "/usr/local/bin/claude",
-  HOME + "/.npm-global/bin/claude",
-  HOME + "/.local/bin/claude",
-  HOME + "/.claude/bin/claude",
-  HOME + "/.nvm/versions/node/v22.22.0/bin/claude",
-  HOME + "/.nvm/versions/node/v20.18.0/bin/claude"
-];
-// Also try `which claude` from a login shell
-try {
-  var found = child.execSync('bash -lc "which claude" 2>/dev/null', {encoding:"utf8"}).trim();
-  if (found && fs.existsSync(found)) CLAUDE_PATH = found;
-} catch(e) {}
-// Fallback: check known paths
-if (!CLAUDE_PATH) {
-  for (var i = 0; i < SEARCH_PATHS.length; i++) {
-    if (fs.existsSync(SEARCH_PATHS[i])) { CLAUDE_PATH = SEARCH_PATHS[i]; break; }
-  }
-}
-var CLAUDE_DIR = CLAUDE_PATH ? path.dirname(CLAUDE_PATH) : "";
-var FULL_PATH = ["/opt/homebrew/bin","/usr/local/bin","/usr/bin","/bin",CLAUDE_DIR,HOME+"/.npm-global/bin",HOME+"/.local/bin",HOME+"/.claude/bin"].filter(Boolean).join(":");
-
-console.log("  Claude CLI: " + (CLAUDE_PATH || "NOT FOUND"));
-console.log("  PATH: " + FULL_PATH);
+try { var f = child.execSync('bash -lc "which claude" 2>/dev/null',{encoding:"utf8"}).trim(); if(f&&fs.existsSync(f)) CLAUDE_PATH=f; } catch(e){}
+if(!CLAUDE_PATH){["/opt/homebrew/bin/claude","/usr/local/bin/claude",HOME+"/.npm-global/bin/claude",HOME+"/.local/bin/claude",HOME+"/.claude/bin/claude"].forEach(function(p){if(!CLAUDE_PATH&&fs.existsSync(p))CLAUDE_PATH=p})}
+var CLAUDE_DIR=CLAUDE_PATH?path.dirname(CLAUDE_PATH):"";
+var FULL_PATH=["/opt/homebrew/bin","/usr/local/bin","/usr/bin","/bin",CLAUDE_DIR,HOME+"/.npm-global/bin",HOME+"/.local/bin",HOME+"/.claude/bin"].filter(Boolean).join(":");
 
 // ── Config ─────────────────────────────────────────────────────────────────
-var DEF = {
-  sessionTimeout: 1500,
-  projects: [{
-    id: "coco-loco", name: "Coco Loco",
-    path: "/Users/waqasburney/Documents/Claude/Coco Loco",
-    agents: [
-      { id:"indy", name:"INDY", enabled:true, hours:[23,0,1,2,3], prompt:"INDY, you've been invoked. Please do what you have to do." },
-      { id:"claude", name:"CLAUDE", enabled:true, hours:[23,2], prompt:"CLAUDE, you've been invoked. Please do what you have to do." },
-      { id:"safe", name:"SAFE", enabled:true, hours:[23], prompt:"SAFE, you've been invoked. Please do what you have to do." }
-    ]
-  }]
-};
+var DEF = { sessionTimeout:1500, onboarded:false, projects:[] };
 
-function loadCfg() {
-  try {
-    var c = JSON.parse(fs.readFileSync(CFGPATH, "utf8"));
-    if (!c.projects) {
-      var m = { sessionTimeout:c.sessionTimeout||1500, projects:[{id:"coco-loco",name:"Coco Loco",path:c.project||DEF.projects[0].path,agents:[]}] };
-      if (c.agents) { for (var n in c.agents) { var a=c.agents[n]; m.projects[0].agents.push({id:n.toLowerCase(),name:n,enabled:a.enabled,hours:a.hours,prompt:n+", you've been invoked. Please do what you have to do."}); } }
-      saveCfg(m); return m;
-    }
-    return c;
-  } catch(e) {
-    fs.writeFileSync(CFGPATH, JSON.stringify(DEF, null, 2));
-    return JSON.parse(JSON.stringify(DEF));
-  }
+function loadCfg(){
+  try{var c=JSON.parse(fs.readFileSync(CFGPATH,"utf8"));if(!c.projects)c.projects=[];return c}
+  catch(e){fs.writeFileSync(CFGPATH,JSON.stringify(DEF,null,2));return JSON.parse(JSON.stringify(DEF))}
 }
+function saveCfg(c){fs.writeFileSync(CFGPATH,JSON.stringify(c,null,2));genScript(c);genPlist(c)}
 
-function saveCfg(c) {
-  fs.writeFileSync(CFGPATH, JSON.stringify(c, null, 2));
-  genScript(c);
-  genPlist(c);
-}
-
-// ── Generate sprint script (no `timeout` - macOS compatible) ───────────────
-function genScript(cfg) {
-  var L = [];
+// ── Generate sprint script ─────────────────────────────────────────────────
+function genScript(cfg){
+  var L=[];
   L.push("#!/bin/bash");
   L.push("set -euo pipefail");
-  L.push('export PATH="' + FULL_PATH + ':$PATH"');
-  L.push("MAX_SECS=" + (cfg.sessionTimeout||1500));
-  L.push('LOGDIR="$HOME/.night-crew/logs"');
-  L.push('mkdir -p "$LOGDIR"');
-  L.push('find "$LOGDIR" -name "sprint_*.log" -mtime +14 -delete 2>/dev/null || true');
-  L.push('find "$LOGDIR" -name "manual_*.log" -mtime +14 -delete 2>/dev/null || true');
-  L.push('HOUR=$(date +"%H")');
+  L.push('export PATH="'+FULL_PATH+':$PATH"');
+  L.push("MAX="+( cfg.sessionTimeout||1500));
+  L.push('LD="$HOME/.agents-go/logs"');
+  L.push('mkdir -p "$LD"');
+  L.push('find "$LD" -name "sprint_*.log" -mtime +14 -delete 2>/dev/null || true');
+  L.push('find "$LD" -name "manual_*.log" -mtime +14 -delete 2>/dev/null || true');
+  L.push('H=$(date +"%H")');
+  L.push('DOW=$(date +"%u")'); // 1=Mon 7=Sun
   L.push('TS=$(date +"%Y-%m-%d_%H%M")');
-  L.push('LF="$LOGDIR/sprint_${TS}.log"');
-  L.push('log() { echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $*" | tee -a "$LF"; }');
-  L.push("");
-  L.push("run_agent() {");
-  L.push('  local NM="$1" PR="$2" T0=$(date +%s)');
-  L.push('  log "Summoning ${NM}..."');
-  L.push('  claude --print --dangerously-skip-permissions "$PR" 2>&1 | tee -a "$LF" &');
-  L.push("  local CPID=$!");
-  L.push("  while kill -0 $CPID 2>/dev/null; do");
-  L.push("    sleep 5");
-  L.push("    if [ $(( $(date +%s) - T0 )) -ge $MAX_SECS ]; then");
-  L.push('      log "Timeout (${MAX_SECS}s). Stopping ${NM}..."');
-  L.push("      kill $CPID 2>/dev/null; wait $CPID 2>/dev/null; break");
-  L.push("    fi");
-  L.push("  done");
-  L.push("  wait $CPID 2>/dev/null || true");
-  L.push('  log "${NM} session ended after $(( $(date +%s) - T0 ))s"');
+  L.push('LF="$LD/sprint_${TS}.log"');
+  L.push('log(){ echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $*"|tee -a "$LF"; }');
+  L.push("ra(){");
+  L.push('  local N="$1" P="$2" T0=$(date +%s)');
+  L.push('  log "Summoning ${N}..."');
+  L.push('  claude --print --dangerously-skip-permissions "$P" 2>&1|tee -a "$LF" &');
+  L.push("  local CP=$!");
+  L.push("  while kill -0 $CP 2>/dev/null;do sleep 5");
+  L.push("    [ $(( $(date +%s)-T0 )) -ge $MAX ]&&{ log \"Timeout. Stopping ${N}...\";kill $CP 2>/dev/null;wait $CP 2>/dev/null;break; }");
+  L.push("  done; wait $CP 2>/dev/null||true");
+  L.push('  log "${N} ended after $(( $(date +%s)-T0 ))s"');
   L.push("}");
-  L.push("");
-  L.push('log "===== Night Crew sprint - Hour: ${HOUR} ====="');
+  L.push('log "===== Sprint - Hour:${H} Day:${DOW} ====="');
 
-  cfg.projects.forEach(function(proj) {
-    var sp = proj.path.replace(/"/g, '\\"');
-    L.push('log "-- Project: ' + proj.name + ' --"');
-    L.push('if cd "' + sp + '"; then');
-    proj.agents.forEach(function(a) {
-      if (!a.enabled) { L.push('  # ' + a.name + ' PAUSED'); return; }
-      var cond = a.hours.map(function(h){return '"$HOUR" == "'+String(h).padStart(2,"0")+'"'}).join(" || ");
-      var pr = (a.prompt||a.name+", go.").replace(/"/g,'\\"');
-      L.push("  if [[ " + cond + " ]]; then");
-      L.push('    run_agent "' + a.name + '" "' + pr + '"');
+  cfg.projects.forEach(function(proj){
+    var sp=proj.path.replace(/"/g,'\\"');
+    L.push('log "-- Project: '+proj.name+' --"');
+    L.push('if cd "'+sp+'";then');
+    (proj.agents||[]).forEach(function(a){
+      if(!a.enabled){L.push('  # '+a.name+' PAUSED');return}
+      // Day check
+      var days=a.days||[1,2,3,4,5,6,7];
+      var dayCond=days.map(function(d){return '"$DOW" == "'+d+'"'}).join(" || ");
+      // Hour check
+      var hrCond=a.hours.map(function(h){return '"$H" == "'+String(h).padStart(2,"0")+'"'}).join(" || ");
+      var pr=(a.prompt||a.name+", go.").replace(/"/g,'\\"');
+      L.push("  if [[ ("+dayCond+") && ("+hrCond+") ]];then");
+      L.push('    ra "'+a.name+'" "'+pr+'"');
       L.push("  fi");
     });
     L.push("else");
-    L.push('  log "ERROR: Cannot cd to ' + sp + '"');
+    L.push('  log "ERROR: Cannot cd to '+sp+'"');
     L.push("fi");
   });
-
   L.push('log "===== Sprint complete ====="');
-  fs.writeFileSync(SCRIPT, L.join("\n"), {mode:0o755});
+  fs.writeFileSync(SCRIPT,L.join("\n"),{mode:0o755});
 }
 
 // ── Generate plist ─────────────────────────────────────────────────────────
-function genPlist(cfg) {
-  var hrs = {};
-  cfg.projects.forEach(function(p){p.agents.forEach(function(a){if(a.enabled)a.hours.forEach(function(h){hrs[h]=1})})});
-  var s = Object.keys(hrs).map(Number);
-  if(!s.length) s=[23];
-  s.sort(function(a,b){return (a<12?a+24:a)-(b<12?b+24:b)});
-  var iv = s.map(function(h){return '        <dict><key>Hour</key><integer>'+h+'</integer><key>Minute</key><integer>0</integer></dict>'}).join("\n");
-  var xml = [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
-    '<plist version="1.0">','<dict>',
-    '    <key>Label</key>','    <string>com.waqas.night-crew</string>',
-    '    <key>ProgramArguments</key>','    <array>',
-    '        <string>/bin/bash</string>','        <string>'+SCRIPT+'</string>',
-    '    </array>',
-    '    <key>StartCalendarInterval</key>','    <array>',iv,'    </array>',
-    '    <key>StandardOutPath</key>','    <string>/tmp/night-crew-stdout.log</string>',
-    '    <key>StandardErrorPath</key>','    <string>/tmp/night-crew-stderr.log</string>',
-    '    <key>EnvironmentVariables</key>','    <dict>',
-    '        <key>PATH</key>','        <string>'+FULL_PATH+'</string>',
-    '    </dict>','</dict>','</plist>'
-  ].join("\n");
-  fs.writeFileSync(PPATH, xml);
+function genPlist(cfg){
+  var hrs={};
+  cfg.projects.forEach(function(p){(p.agents||[]).forEach(function(a){if(a.enabled)(a.hours||[]).forEach(function(h){hrs[h]=1})})});
+  var s=Object.keys(hrs).map(Number);
+  if(!s.length)s=[23];
+  s.sort(function(a,b){return a-b});
+  var iv=s.map(function(h){return '        <dict><key>Hour</key><integer>'+h+'</integer><key>Minute</key><integer>0</integer></dict>'}).join("\n");
+  var xml=['<?xml version="1.0" encoding="UTF-8"?>','<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">','<plist version="1.0">','<dict>','    <key>Label</key>','    <string>com.agentsgo</string>','    <key>ProgramArguments</key>','    <array>','        <string>/bin/bash</string>','        <string>'+SCRIPT+'</string>','    </array>','    <key>StartCalendarInterval</key>','    <array>',iv,'    </array>','    <key>StandardOutPath</key>','    <string>/tmp/agentsgo-stdout.log</string>','    <key>StandardErrorPath</key>','    <string>/tmp/agentsgo-stderr.log</string>','    <key>EnvironmentVariables</key>','    <dict>','        <key>PATH</key>','        <string>'+FULL_PATH+'</string>','    </dict>','</dict>','</plist>'].join("\n");
+  fs.writeFileSync(PPATH,xml);
 }
 
-// ── launchctl helpers (using -w flag to fix restart bug) ───────────────────
-function launchStart() {
-  // Always unload first to clear any stale state, then load with -w
-  try { child.execSync('launchctl unload -w "' + PPATH + '" 2>/dev/null'); } catch(e) {}
-  child.execSync('launchctl load -w "' + PPATH + '" 2>&1');
-}
+function launchStart(){try{child.execSync('launchctl unload -w "'+PPATH+'" 2>/dev/null')}catch(e){}child.execSync('launchctl load -w "'+PPATH+'" 2>&1')}
+function launchStop(){child.execSync('launchctl unload -w "'+PPATH+'" 2>&1')}
+function isLoaded(){try{var o=child.execSync("launchctl list 2>/dev/null",{encoding:"utf8"}).split("\n");for(var i=0;i<o.length;i++){if(o[i].match(/\tcom\.agentsgo$/))return true}return false}catch(e){return false}}
 
-function launchStop() {
-  child.execSync('launchctl unload -w "' + PPATH + '" 2>&1');
-}
+function getLogs(){try{return fs.readdirSync(LOGDIR).filter(function(f){return f.endsWith(".log")}).sort().reverse().map(function(f){var st=fs.statSync(path.join(LOGDIR,f));var t=fs.readFileSync(path.join(LOGDIR,f),"utf8");var ag=[],su=[],pr=[],m;var r1=/Summoning (\w+)/g;while((m=r1.exec(t))!==null)ag.push(m[1]);var r2=/(\w+) ended after (\d+)s/g;while((m=r2.exec(t))!==null)su.push({name:m[1],dur:parseInt(m[2])});var r3=/Project: (.+?) --/g;while((m=r3.exec(t))!==null)pr.push(m[1]);return{file:f,date:st.mtime.toISOString().slice(0,10),size:st.size,agents:ag,success:su,projects:pr,manual:f.indexOf("manual_")===0}})}catch(e){return[]}}
+function getLog(f){try{return fs.readFileSync(path.join(LOGDIR,path.basename(f)),"utf8")}catch(e){return"Not found."}}
+function getRunning(){try{var o=child.execSync("ps aux 2>/dev/null",{encoding:"utf8"});return o.split("\n").filter(function(l){return l.indexOf("claude")!==-1&&l.indexOf("dangerously-skip-permissions")!==-1&&l.indexOf("grep")===-1}).map(function(l){return{pid:l.trim().split(/\s+/)[1]}})}catch(e){return[]}}
 
-function isLoaded() {
-  try {
-    var out = child.execSync("launchctl list 2>/dev/null", {encoding:"utf8"});
-    // Match exactly com.waqas.night-crew (not night-crew-dashboard)
-    var lines = out.split("\n");
-    for (var i = 0; i < lines.length; i++) {
-      if (lines[i].match(/\tcom\.waqas\.night-crew$/)) return true;
-    }
-    return false;
-  } catch(e) { return false; }
-}
-
-// ── Logs ───────────────────────────────────────────────────────────────────
-function getLogs() {
-  try {
-    return fs.readdirSync(LOGDIR).filter(function(f){return f.endsWith(".log")}).sort().reverse().map(function(f) {
-      var st = fs.statSync(path.join(LOGDIR,f));
-      var txt = fs.readFileSync(path.join(LOGDIR,f),"utf8");
-      var agents=[],success=[],projects=[],m;
-      var r1=/Summoning (\w+)/g; while((m=r1.exec(txt))!==null) agents.push(m[1]);
-      var r2=/(\w+) session ended after (\d+)s/g; while((m=r2.exec(txt))!==null) success.push({name:m[1],dur:parseInt(m[2])});
-      var r3=/Project: (.+?) --/g; while((m=r3.exec(txt))!==null) projects.push(m[1]);
-      return {file:f, date:st.mtime.toISOString().slice(0,10), size:st.size, agents:agents, success:success, projects:projects, manual:f.indexOf("manual_")===0};
-    });
-  } catch(e){return []}
-}
-
-function getLog(f) {
-  try { return fs.readFileSync(path.join(LOGDIR,path.basename(f)),"utf8"); }
-  catch(e) { return "Log not found."; }
-}
-
-// ── Terminal invoke (opens visible Terminal.app window) ─────────────────────
-function invokeInTerminal(projPath, agentName, prompt, maxSecs, cb) {
-  var ts = new Date().toISOString().replace(/[T:]/g,"-").slice(0,16);
-  var logFile = path.join(LOGDIR, "manual_" + agentName.toLowerCase() + "_" + ts + ".log");
-  var tmp = path.join(NCDIR, ".invoke-" + agentName.toLowerCase() + ".sh");
-
-  var script = [
-    "#!/bin/bash",
-    'export PATH="' + FULL_PATH + ':$PATH"',
-    "",
-    'echo "================================================"',
-    'echo "  NIGHT CREW - Invoking: ' + agentName + '"',
-    'echo "  Project: ' + projPath + '"',
-    'echo "  Log: ' + logFile + '"',
-    'echo "  Close this window to stop the session"',
-    'echo "================================================"',
-    'echo ""',
-    "",
-    '# Check claude exists',
-    'CLAUDE_BIN=$(command -v claude 2>/dev/null || echo "")',
-    'if [ -z "$CLAUDE_BIN" ]; then',
-    '  echo "ERROR: claude CLI not found in PATH"',
-    '  echo "PATH is: $PATH"',
-    '  echo ""',
-    '  echo "Searching common locations..."',
-    '  for P in /opt/homebrew/bin/claude /usr/local/bin/claude "$HOME/.npm-global/bin/claude" "$HOME/.local/bin/claude" "$HOME/.claude/bin/claude"; do',
-    '    [ -f "$P" ] && echo "  Found: $P"',
-    '  done',
-    '  echo ""',
-    '  echo "Press any key to close."',
-    '  read -n 1 -s; exit 1',
-    'fi',
-    'echo "Using: $CLAUDE_BIN"',
-    'echo ""',
-    "",
-    'cd "' + projPath.replace(/"/g,'\\"') + '" || { echo "Cannot cd to project."; read -n 1 -s; exit 1; }',
-    'echo "Directory: $(pwd)"',
-    'echo ""',
-    "",
-    'T0=$(date +%s)',
-    'echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Summoning ' + agentName + '..." | tee -a "' + logFile + '"',
-    'echo ""',
-    "",
-    '# Run Claude Code in interactive mode - you will see the full TUI',
-    '# Close this Terminal window to stop the session',
-    'claude --dangerously-skip-permissions "' + (prompt||"").replace(/"/g,'\\"') + '"',
-    "",
-    'DUR=$(( $(date +%s) - T0 ))',
-    'echo ""',
-    'echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] ' + agentName + ' session ended after ${DUR}s" | tee -a "' + logFile + '"',
-    'echo ""',
-    'echo "Done. Close this window or press any key."',
-    'read -n 1 -s'
-  ].join("\n");
-
-  fs.writeFileSync(tmp, script, {mode:0o755});
-
-  // Open Terminal.app with this script
-  var osa = 'tell application "Terminal"\n  activate\n  do script "bash \'' + tmp + "'\"\nend tell";
-  child.exec("osascript -e '" + osa.replace(/'/g, "'\\''") + "'", function(err) {
-    cb(err);
-  });
-}
-
-// ── Running processes ──────────────────────────────────────────────────────
-function getRunning() {
-  try {
-    var out = child.execSync("ps aux 2>/dev/null", {encoding:"utf8"});
-    return out.split("\n").filter(function(l){return l.indexOf("claude")!==-1 && l.indexOf("dangerously-skip-permissions")!==-1 && l.indexOf("grep")===-1}).map(function(l){
-      return {pid:l.trim().split(/\s+/)[1]};
-    });
-  } catch(e){return []}
+function invokeInTerminal(pp,an,pr,to,cb){
+  var ts=new Date().toISOString().replace(/[T:]/g,"-").slice(0,16);
+  var lf=path.join(LOGDIR,"manual_"+an.toLowerCase()+"_"+ts+".log");
+  var tmp=path.join(NCDIR,".invoke-"+an.toLowerCase()+".sh");
+  var s=["#!/bin/bash",'export PATH="'+FULL_PATH+':$PATH"','','echo "================================================"','echo "  AGENTS: GO - Invoking: '+an+'"','echo "  Project: '+pp+'"','echo "  Log: '+lf+'"','echo "  Close this window to stop"','echo "================================================"','echo ""','CLAUDE_BIN=$(command -v claude 2>/dev/null||echo "")','if [ -z "$CLAUDE_BIN" ];then','  echo "ERROR: claude not found in PATH"','  echo "Install: https://docs.anthropic.com/en/docs/claude-code"','  read -n 1 -s;exit 1','fi','echo "Using: $CLAUDE_BIN"','echo ""','cd "'+pp.replace(/"/g,'\\"')+'"||{ echo "Cannot cd"; read -n 1 -s; exit 1; }','echo "Directory: $(pwd)"','echo ""','T0=$(date +%s)','echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Summoning '+an+'..."|tee -a "'+lf+'"','echo ""','claude --dangerously-skip-permissions "'+(pr||"").replace(/"/g,'\\"')+'"','DUR=$(( $(date +%s)-T0 ))','echo ""','echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] '+an+' ended after ${DUR}s"|tee -a "'+lf+'"','echo "Done. Close this window or press any key."','read -n 1 -s'].join("\n");
+  fs.writeFileSync(tmp,s,{mode:0o755});
+  child.exec("osascript -e 'tell application \"Terminal\"\n  activate\n  do script \"bash \\'"+tmp+"\\'\"\nend tell'",function(err){cb(err)});
 }
 
 // ── About ──────────────────────────────────────────────────────────────────
-var HF = {20:"8 PM",21:"9 PM",22:"10 PM",23:"11 PM",0:"12 AM",1:"1 AM",2:"2 AM",3:"3 AM",4:"4 AM",5:"5 AM"};
+var HF={};for(var i=0;i<24;i++){var ap=i<12?"AM":"PM";var h12=i===0?12:(i>12?i-12:i);HF[i]=h12+" "+ap}
+var DN={1:"Mon",2:"Tue",3:"Wed",4:"Thu",5:"Fri",6:"Sat",7:"Sun"};
 
-function genAboutSetup(cfg) {
-  var L = [];
-  L.push("# Night Crew - Autonomous Agent Scheduler");
-  L.push("# Developed by Waqas Burney & Claude");
-  L.push("");
-  L.push("## What It Is");
-  L.push("");
-  L.push("Night Crew is a macOS-based scheduler that automatically invokes");
-  L.push("Claude Code agents at fixed intervals overnight. Each agent gets a");
-  L.push("fresh, stateless Claude Code session, reads its own log files to");
-  L.push("understand context, performs its work, appends findings with");
-  L.push("timestamps, and exits cleanly.");
-  L.push("");
-  L.push("No session is kept alive between sprints. If a sprint crashes, the");
-  L.push("next one starts completely fresh with no damage to prior work.");
-  L.push("");
-  L.push("## How Invocation Works");
-  L.push("");
-  L.push("When an agent is due, the scheduler:");
-  L.push("1. cd's into the agent's project directory");
-  L.push("2. Runs: claude --print --dangerously-skip-permissions \"<prompt>\"");
-  L.push("3. The prompt is a simple invocation message, e.g.:");
-  L.push('   "INDY, you\'ve been invoked. Please do what you have to do."');
-  L.push("4. The agent reads its own logs/files on startup - it knows what to do.");
-  L.push("5. Session ends after the work is done or the timeout (" + Math.round((cfg.sessionTimeout||1500)/60) + " min) is hit.");
-  L.push("6. Each agent's exact prompt is listed in the Active Agents section.");
-  L.push("");
-  L.push("## Key Design Principles");
-  L.push("");
-  L.push("- Stateless: Each invocation starts fresh. No token bleed.");
-  L.push("- Agent-owned memory: Agents maintain their own logs/state files.");
-  L.push("- Crash resilient: Failed sprints don't corrupt anything.");
-  L.push("- Manual invoke opens a visible Terminal window.");
-  L.push("- Scheduled runs are headless (no windows at 2 AM).");
-  L.push("");
-  L.push("## System Setup");
-  L.push("");
-  L.push("Dashboard URL:    http://localhost:" + PORT);
-  L.push("Dashboard server: ~/.night-crew/dashboard.js (auto-starts on login)");
-  L.push("Sprint script:    ~/.night-crew/agent-sprint.sh (auto-generated)");
-  L.push("Configuration:    ~/.night-crew/config.json");
-  L.push("Sprint logs:      ~/.night-crew/logs/ (auto-cleaned after 14 days)");
-  L.push("Scheduler plist:  ~/Library/LaunchAgents/com.waqas.night-crew.plist");
-  L.push("Dashboard plist:  ~/Library/LaunchAgents/com.waqas.night-crew-dashboard.plist");
-  L.push("Claude CLI:       " + (CLAUDE_PATH || "auto-detected at runtime"));
-  L.push("Session timeout:  " + Math.round((cfg.sessionTimeout||1500)/60) + " minutes");
-  L.push("");
-  L.push("## Terminal Commands");
-  L.push("");
-  L.push("  launchctl list | grep night-crew       # Check status");
-  L.push('  pkill -f "claude --print"               # Kill running agents');
-  L.push("  cat ~/.night-crew/logs/$(ls -t ~/.night-crew/logs | head -1)");
-  L.push("");
-  L.push("---");
-  L.push("Developed by Waqas Burney & Claude");
-  L.push("Generated: " + new Date().toLocaleString());
+function genSetup(cfg){
+  var L=["# Agents: Go","# Your autonomous Claude Code agent scheduler","# Developed by Waqas Burney & Claude","# GitHub: https://github.com/waqasburney/agents-go","","## What It Is","","Agents: Go runs your Claude Code agents on a schedule — day or night.","Each agent gets a fresh, stateless session, reads its own context,","does its work, and exits cleanly. No memory bleed, no orphans.","","## How Invocation Works","","When an agent is due, the scheduler:","1. cd's into the project directory","2. Runs: claude --print --dangerously-skip-permissions \"<prompt>\"","3. The prompt is a simple message, e.g.:","   \"SCOUT, you've been invoked. Please do what you have to do.\"","4. The agent reads its own logs/files — it knows what to do.","5. Session ends after work is done or timeout ("+Math.round((cfg.sessionTimeout||1500)/60)+" min).","6. Each agent's exact prompt is listed in Active Agents.","","## System","","Dashboard: http://localhost:"+PORT,"Config:    ~/.agents-go/config.json","Logs:      ~/.agents-go/logs/ (14-day auto-clean)","Timeout:   "+Math.round((cfg.sessionTimeout||1500)/60)+" minutes","","## Commands","","  launchctl list | grep agentsgo","  pkill -f \"claude.*dangerously-skip-permissions\"","  cat ~/.agents-go/logs/$(ls -t ~/.agents-go/logs|head -1)","","---","Developed by Waqas Burney & Claude","GitHub: https://github.com/waqasburney/agents-go","Generated: "+new Date().toLocaleString()];
   return L.join("\n");
 }
 
-function genAboutAgents(cfg) {
-  var L = [];
-  L.push("# Active Projects & Agents");
-  L.push("");
-  var ta=0,aa=0;
-  cfg.projects.forEach(function(p){ta+=p.agents.length;p.agents.forEach(function(a){if(a.enabled)aa++})});
-  L.push(cfg.projects.length + " project(s), " + aa + " active / " + ta + " total agents");
-  L.push("");
-  cfg.projects.forEach(function(proj) {
-    L.push("---");
-    L.push("## " + proj.name);
-    L.push("Directory: " + proj.path);
-    L.push("");
-    if (!proj.agents.length) { L.push("No agents configured."); L.push(""); return; }
-    proj.agents.forEach(function(a) {
-      var sched = a.hours.map(function(h){return HF[h]||h}).join(", ");
-      L.push("### " + a.name + " [" + (a.enabled?"ACTIVE":"PAUSED") + "]");
-      L.push("Schedule: " + sched);
-      L.push("Invocation prompt: \"" + a.prompt + "\"");
-      L.push("");
+function genAgents(cfg){
+  var L=["# Active Projects & Agents",""];
+  var ta=0,aa=0;cfg.projects.forEach(function(p){ta+=(p.agents||[]).length;(p.agents||[]).forEach(function(a){if(a.enabled)aa++})});
+  L.push(cfg.projects.length+" project(s), "+aa+" active / "+ta+" total");L.push("");
+  cfg.projects.forEach(function(proj){
+    L.push("---");L.push("## "+proj.name);L.push("Directory: "+proj.path);L.push("");
+    if(!(proj.agents||[]).length){L.push("No agents.");L.push("");return}
+    (proj.agents||[]).forEach(function(a){
+      var sched=(a.hours||[]).map(function(h){return HF[h]||h}).join(", ");
+      var days=(a.days||[1,2,3,4,5,6,7]).map(function(d){return DN[d]||d}).join(", ");
+      L.push("### "+a.name+" ["+(a.enabled?"ACTIVE":"PAUSED")+"]");
+      L.push("Schedule: "+sched);L.push("Days: "+days);
+      L.push("Invocation prompt: \""+a.prompt+"\"");L.push("");
     });
   });
-  L.push("---");
-  L.push("Developed by Waqas Burney & Claude");
-  L.push("Generated: " + new Date().toLocaleString());
+  L.push("---");L.push("Developed by Waqas Burney & Claude");L.push("Generated: "+new Date().toLocaleString());
   return L.join("\n");
 }
 
 // ── HTML ───────────────────────────────────────────────────────────────────
-var CSS = [
-':root{--bg:#08090d;--s1:#11121a;--s2:#181925;--s3:#1f2130;--bd:#2a2c3c;--bd2:#383a4e;--t:#e8e8f0;--t2:#8e8ea8;--t3:#5c5c72;--ac:#6ee7b7;--ac2:#34d399;--ac3:rgba(110,231,183,.1);--rd:#f87171;--rd3:rgba(248,113,113,.1);--am:#fbbf24;--bl:#60a5fa;--pr:#a78bfa;--pk:#f472b6}',
-'*{box-sizing:border-box;margin:0;padding:0}body{background:var(--bg);color:var(--t);font-family:"DM Sans",sans-serif;min-height:100vh}',
-'::selection{background:var(--ac);color:var(--bg)}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--s1)}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:3px}',
-'.top{background:var(--s1);border-bottom:1px solid var(--bd);padding:14px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}',
-'.top h1{font-family:"JetBrains Mono",monospace;font-size:17px;font-weight:600}.top h1 b{color:var(--ac)}',
-'.top-sub{font-size:11px;color:var(--t3);font-family:"JetBrains Mono",monospace;margin-top:2px}',
-'.top-r{display:flex;align-items:center;gap:12px}',
-'.pill{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:16px;font-size:12px;font-weight:500;font-family:"JetBrains Mono",monospace}',
-'.pill.on{background:var(--ac3);color:var(--ac)}.pill.off{background:var(--rd3);color:var(--rd)}',
-'.pill i{width:7px;height:7px;border-radius:50%;display:inline-block}.pill.on i{background:var(--ac);animation:pu 2s infinite}.pill.off i{background:var(--rd)}',
-'@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}',
-'.rbadge{font-family:"JetBrains Mono",monospace;font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(251,191,36,.1);color:var(--am)}',
-'.tabs{display:flex;gap:0;border-bottom:1px solid var(--bd);background:var(--s1);padding:0 28px;position:sticky;top:51px;z-index:99}',
-'.tab{font-family:"JetBrains Mono",monospace;font-size:12px;padding:12px 20px;cursor:pointer;color:var(--t3);border-bottom:2px solid transparent;transition:all .15s;background:none;border-top:none;border-left:none;border-right:none}.tab:hover{color:var(--t2)}.tab.on{color:var(--ac);border-bottom-color:var(--ac)}',
-'.W{max-width:1040px;margin:0 auto;padding:28px 24px}',
-'.card{background:var(--s1);border:1px solid var(--bd);border-radius:10px;padding:22px;margin-bottom:18px}',
-'.card-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}',
-'.card-t{font-family:"JetBrains Mono",monospace;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1.5px;color:var(--t3)}',
-'.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}',
-'.b{font-family:"JetBrains Mono",monospace;font-size:12px;font-weight:500;padding:8px 16px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t);cursor:pointer;transition:all .12s;white-space:nowrap}.b:hover{background:var(--s3)}.b:active{transform:scale(.97)}.b.sm{padding:5px 10px;font-size:11px}',
-'.b.go{background:var(--ac);color:var(--bg);border-color:var(--ac)}.b.go:hover{background:var(--ac2)}.b.no{border-color:var(--rd);color:var(--rd)}.b.no:hover{background:var(--rd3)}.b.warn{border-color:var(--am);color:var(--am)}.b.warn:hover{background:rgba(251,191,36,.1)}.b:disabled{opacity:.35;cursor:not-allowed;transform:none}',
-'.pj{background:var(--s2);border:1px solid var(--bd);border-radius:9px;padding:18px;margin-bottom:14px}.pj:last-child{margin-bottom:0}',
-'.pj-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px}',
-'.pj-nm{font-family:"JetBrains Mono",monospace;font-size:16px;font-weight:700}',
-'.pj-pt{font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--t3);margin-top:2px;word-break:break-all}',
-'.pj-btns{display:flex;gap:5px;flex-shrink:0}',
-'.ag-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px}',
-'.ag{background:var(--s3);border:1px solid var(--bd);border-radius:7px;padding:14px;transition:border-color .15s}.ag:hover{border-color:var(--bd2)}.ag.off{opacity:.35}',
-'.ag-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}',
-'.ag-nm{font-family:"JetBrains Mono",monospace;font-size:16px;font-weight:700}',
-'.ag-pr{font-size:10px;color:var(--t3);font-family:"JetBrains Mono",monospace;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}.ag-pr:hover{color:var(--t2)}',
-'.hrs{display:flex;gap:3px;flex-wrap:wrap;margin-bottom:8px}',
-'.hc{font-family:"JetBrains Mono",monospace;font-size:10px;padding:2px 6px;border-radius:4px;border:1px solid var(--bd);background:transparent;color:var(--t3);cursor:pointer;transition:all .12s}.hc.on{background:var(--ac);color:var(--bg);border-color:var(--ac)}.hc:hover{border-color:var(--t2)}',
-'.tgl{position:relative;width:34px;height:18px;background:var(--bd);border-radius:9px;cursor:pointer;transition:background .2s;border:none;flex-shrink:0}.tgl.on{background:var(--ac)}.tgl::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;background:#fff;border-radius:50%;transition:transform .2s}.tgl.on::after{transform:translateX(16px)}',
-'.c0{color:var(--ac)}.c1{color:var(--bl)}.c2{color:var(--am)}.c3{color:var(--pr)}.c4{color:var(--pk)}.c5{color:var(--rd)}',
-'.lf{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}',
-'.lf select,.lf input{font-family:"JetBrains Mono",monospace;font-size:11px;padding:6px 10px;border-radius:6px;border:1px solid var(--bd);background:var(--s2);color:var(--t);outline:none}.lf select:focus,.lf input:focus{border-color:var(--ac)}.lf label{font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--t3)}',
-'.le{padding:9px 0;border-bottom:1px solid var(--bd);cursor:pointer;transition:background .1s}.le:hover{background:var(--s2);margin:0 -22px;padding:9px 22px}.le:last-child{border-bottom:none}',
-'.le-r1{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}',
-'.le-d{font-family:"JetBrains Mono",monospace;font-size:12px}.le-sz{font-size:11px;color:var(--t3)}',
-'.tags{display:flex;gap:4px;flex-wrap:wrap;align-items:center}',
-'.tag{font-family:"JetBrains Mono",monospace;font-size:9px;padding:2px 6px;border-radius:3px;font-weight:600}',
-'.tag.a{background:var(--ac3);color:var(--ac)}.tag.p{background:rgba(96,165,250,.1);color:var(--bl)}.tag.m{background:rgba(251,191,36,.1);color:var(--am)}.tag.dur{background:var(--s3);color:var(--t2);font-weight:400}',
-'.pgr{display:flex;gap:6px;justify-content:center;margin-top:14px;align-items:center}.pgr span{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--t2)}',
-'.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;padding:40px 20px;overflow-y:auto}.ov.open{display:flex;justify-content:center;align-items:flex-start}',
-'.md{background:var(--s1);border:1px solid var(--bd);border-radius:10px;max-width:700px;width:100%;max-height:82vh;overflow:hidden;display:flex;flex-direction:column}',
-'.md-h{padding:14px 18px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center}.md-h h3{font-family:"JetBrains Mono",monospace;font-size:13px}',
-'.md-b{padding:18px;overflow-y:auto;flex:1}.md-b pre{font-family:"JetBrains Mono",monospace;font-size:11px;line-height:1.6;color:var(--t2);white-space:pre-wrap;word-break:break-all}',
-'.fg{margin-bottom:14px}.fl{font-family:"JetBrains Mono",monospace;font-size:11px;font-weight:500;color:var(--t3);margin-bottom:5px;display:block;text-transform:uppercase;letter-spacing:1px}',
-'.fi{width:100%;padding:9px 12px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t);font-family:"DM Sans",sans-serif;font-size:13px;outline:none}.fi:focus{border-color:var(--ac)}.fi::placeholder{color:var(--t3)}',
-'.fa{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}',
-'.as{background:var(--s1);border:1px solid var(--bd);border-radius:10px;padding:22px;margin-bottom:18px}',
-'.as pre{font-family:"JetBrains Mono",monospace;font-size:11px;line-height:1.8;white-space:pre-wrap;color:var(--t2)}',
-'.as-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}',
-'.as-lb{font-family:"JetBrains Mono",monospace;font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--t3)}',
-'.toast{position:fixed;bottom:20px;right:20px;padding:10px 18px;border-radius:7px;font-family:"JetBrains Mono",monospace;font-size:12px;z-index:300;animation:si .25s;background:var(--s1);border:1px solid var(--bd);color:var(--t)}.toast.ok{border-color:var(--ac)}.toast.err{border-color:var(--rd)}',
-'@keyframes si{from{transform:translateY(16px);opacity:0}}.empty{color:var(--t3);font-size:13px;text-align:center;padding:32px 0}.hidden{display:none}'
-].join("\n");
+var CSS=':root{--bg:#08090d;--s1:#11121a;--s2:#181925;--s3:#1f2130;--bd:#2a2c3c;--bd2:#383a4e;--t:#e8e8f0;--t2:#8e8ea8;--t3:#5c5c72;--ac:#6ee7b7;--ac2:#34d399;--ac3:rgba(110,231,183,.1);--rd:#f87171;--rd3:rgba(248,113,113,.1);--am:#fbbf24;--bl:#60a5fa;--pr:#a78bfa;--pk:#f472b6}*{box-sizing:border-box;margin:0;padding:0}body{background:var(--bg);color:var(--t);font-family:"DM Sans",sans-serif;min-height:100vh}::selection{background:var(--ac);color:var(--bg)}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--s1)}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:3px}.top{background:var(--s1);border-bottom:1px solid var(--bd);padding:14px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}.top h1{font-family:"JetBrains Mono",monospace;font-size:17px;font-weight:600}.top h1 b{color:var(--ac)}.top-sub{font-size:11px;color:var(--t3);font-family:"JetBrains Mono",monospace;margin-top:2px}.top-tag{font-size:10px;color:var(--t3);font-family:"JetBrains Mono",monospace;font-style:italic}.top-r{display:flex;align-items:center;gap:12px}.pill{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:16px;font-size:12px;font-weight:500;font-family:"JetBrains Mono",monospace}.pill.on{background:var(--ac3);color:var(--ac)}.pill.off{background:var(--rd3);color:var(--rd)}.pill i{width:7px;height:7px;border-radius:50%;display:inline-block}.pill.on i{background:var(--ac);animation:pu 2s infinite}.pill.off i{background:var(--rd)}@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}.rbadge{font-family:"JetBrains Mono",monospace;font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(251,191,36,.1);color:var(--am)}.tabs{display:flex;gap:0;border-bottom:1px solid var(--bd);background:var(--s1);padding:0 28px;position:sticky;top:55px;z-index:99}.tab{font-family:"JetBrains Mono",monospace;font-size:12px;padding:12px 20px;cursor:pointer;color:var(--t3);border-bottom:2px solid transparent;transition:all .15s;background:none;border-top:none;border-left:none;border-right:none}.tab:hover{color:var(--t2)}.tab.on{color:var(--ac);border-bottom-color:var(--ac)}.W{max-width:1040px;margin:0 auto;padding:28px 24px}.card{background:var(--s1);border:1px solid var(--bd);border-radius:10px;padding:22px;margin-bottom:18px}.card-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.card-t{font-family:"JetBrains Mono",monospace;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1.5px;color:var(--t3)}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.b{font-family:"JetBrains Mono",monospace;font-size:12px;font-weight:500;padding:8px 16px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t);cursor:pointer;transition:all .12s;white-space:nowrap}.b:hover{background:var(--s3)}.b:active{transform:scale(.97)}.b.sm{padding:5px 10px;font-size:11px}.b.go{background:var(--ac);color:var(--bg);border-color:var(--ac)}.b.go:hover{background:var(--ac2)}.b.no{border-color:var(--rd);color:var(--rd)}.b.no:hover{background:var(--rd3)}.b.warn{border-color:var(--am);color:var(--am)}.b:disabled{opacity:.35;cursor:not-allowed;transform:none}.pj{background:var(--s2);border:1px solid var(--bd);border-radius:9px;padding:18px;margin-bottom:14px}.pj:last-child{margin-bottom:0}.pj-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px}.pj-nm{font-family:"JetBrains Mono",monospace;font-size:16px;font-weight:700}.pj-pt{font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--t3);margin-top:2px;word-break:break-all}.pj-btns{display:flex;gap:5px;flex-shrink:0}.ag-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}.ag{background:var(--s3);border:1px solid var(--bd);border-radius:7px;padding:14px;transition:border-color .15s}.ag:hover{border-color:var(--bd2)}.ag.off{opacity:.35}.ag-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}.ag-nm{font-family:"JetBrains Mono",monospace;font-size:16px;font-weight:700}.ag-pr{font-size:10px;color:var(--t3);font-family:"JetBrains Mono",monospace;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}.ag-pr:hover{color:var(--t2)}.hrs{display:flex;gap:2px;flex-wrap:wrap;margin-bottom:6px}.hc{font-family:"JetBrains Mono",monospace;font-size:9px;padding:2px 4px;border-radius:3px;border:1px solid var(--bd);background:transparent;color:var(--t3);cursor:pointer;transition:all .1s;min-width:22px;text-align:center}.hc.on{background:var(--ac);color:var(--bg);border-color:var(--ac)}.hc:hover{border-color:var(--t2)}.dc{font-family:"JetBrains Mono",monospace;font-size:9px;padding:2px 5px;border-radius:3px;border:1px solid var(--bd);background:transparent;color:var(--t3);cursor:pointer;transition:all .1s}.dc.on{background:var(--bl);color:var(--bg);border-color:var(--bl)}.dc:hover{border-color:var(--t2)}.days{display:flex;gap:3px;margin-bottom:6px}.tgl{position:relative;width:34px;height:18px;background:var(--bd);border-radius:9px;cursor:pointer;transition:background .2s;border:none;flex-shrink:0}.tgl.on{background:var(--ac)}.tgl::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;background:#fff;border-radius:50%;transition:transform .2s}.tgl.on::after{transform:translateX(16px)}.c0{color:var(--ac)}.c1{color:var(--bl)}.c2{color:var(--am)}.c3{color:var(--pr)}.c4{color:var(--pk)}.c5{color:var(--rd)}.lf{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}.lf select,.lf input{font-family:"JetBrains Mono",monospace;font-size:11px;padding:6px 10px;border-radius:6px;border:1px solid var(--bd);background:var(--s2);color:var(--t);outline:none}.lf label{font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--t3)}.le{padding:9px 0;border-bottom:1px solid var(--bd);cursor:pointer;transition:background .1s}.le:hover{background:var(--s2);margin:0 -22px;padding:9px 22px}.le:last-child{border-bottom:none}.le-r1{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}.le-d{font-family:"JetBrains Mono",monospace;font-size:12px}.le-sz{font-size:11px;color:var(--t3)}.tags{display:flex;gap:4px;flex-wrap:wrap}.tag{font-family:"JetBrains Mono",monospace;font-size:9px;padding:2px 6px;border-radius:3px;font-weight:600}.tag.a{background:var(--ac3);color:var(--ac)}.tag.p{background:rgba(96,165,250,.1);color:var(--bl)}.tag.m{background:rgba(251,191,36,.1);color:var(--am)}.tag.dur{background:var(--s3);color:var(--t2);font-weight:400}.pgr{display:flex;gap:6px;justify-content:center;margin-top:14px;align-items:center}.pgr span{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--t2)}.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;padding:40px 20px;overflow-y:auto}.ov.open{display:flex;justify-content:center;align-items:flex-start}.md{background:var(--s1);border:1px solid var(--bd);border-radius:10px;max-width:700px;width:100%;max-height:82vh;overflow:hidden;display:flex;flex-direction:column}.md-h{padding:14px 18px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center}.md-h h3{font-family:"JetBrains Mono",monospace;font-size:13px}.md-b{padding:18px;overflow-y:auto;flex:1}.md-b pre{font-family:"JetBrains Mono",monospace;font-size:11px;line-height:1.6;color:var(--t2);white-space:pre-wrap;word-break:break-all}.fg{margin-bottom:14px}.fl{font-family:"JetBrains Mono",monospace;font-size:11px;font-weight:500;color:var(--t3);margin-bottom:5px;display:block;text-transform:uppercase;letter-spacing:1px}.fi{width:100%;padding:9px 12px;border-radius:7px;border:1px solid var(--bd);background:var(--s2);color:var(--t);font-family:"DM Sans",sans-serif;font-size:13px;outline:none}.fi:focus{border-color:var(--ac)}.fi::placeholder{color:var(--t3)}.fa{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}.as{background:var(--s1);border:1px solid var(--bd);border-radius:10px;padding:22px;margin-bottom:18px}.as pre{font-family:"JetBrains Mono",monospace;font-size:11px;line-height:1.8;white-space:pre-wrap;color:var(--t2)}.as-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.as-lb{font-family:"JetBrains Mono",monospace;font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--t3)}.toast{position:fixed;bottom:20px;right:20px;padding:10px 18px;border-radius:7px;font-family:"JetBrains Mono",monospace;font-size:12px;z-index:300;animation:si .25s;background:var(--s1);border:1px solid var(--bd);color:var(--t)}.toast.ok{border-color:var(--ac)}.toast.err{border-color:var(--rd)}@keyframes si{from{transform:translateY(16px);opacity:0}}.empty{color:var(--t3);font-size:13px;text-align:center;padding:32px 0}.hidden{display:none}.ob-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:500;justify-content:center;align-items:center}.ob-ov.open{display:flex}.ob{background:var(--s1);border:1px solid var(--bd);border-radius:14px;max-width:520px;width:90%;padding:36px;text-align:center}.ob h2{font-family:"JetBrains Mono",monospace;font-size:20px;margin-bottom:8px}.ob h2 b{color:var(--ac)}.ob p{color:var(--t2);font-size:14px;line-height:1.7;margin-bottom:20px}.ob .step{display:none}.ob .step.active{display:block}.ob-dots{display:flex;gap:8px;justify-content:center;margin-bottom:20px}.ob-dot{width:8px;height:8px;border-radius:50%;background:var(--bd)}.ob-dot.on{background:var(--ac)}.ob-icon{font-size:40px;margin-bottom:16px}.ob code{background:var(--s3);padding:2px 8px;border-radius:4px;font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--ac)}.ob ul{text-align:left;margin:12px 0 16px 20px;color:var(--t2);font-size:13px;line-height:1.8}';
 
-var BODY = [
-'<div class="top"><div><h1><b>&#9632;</b> NIGHT CREW</h1><div class="top-sub" id="sub">Loading...</div></div><div class="top-r"><span class="rbadge hidden" id="rb"></span><div class="pill off" id="pill"><i></i><span>...</span></div></div></div>',
-'<div class="tabs"><button class="tab on" onclick="T(0)" id="t0">Dashboard</button><button class="tab" onclick="T(1)" id="t1">Logs</button><button class="tab" onclick="T(2)" id="t2">About</button></div>',
-'<div id="p0" class="W">',
-'  <div class="card"><div class="card-h"><span class="card-t">Scheduler</span></div><div class="row"><button class="b go" id="bOn" onclick="ON()">Start</button><button class="b no" id="bOff" onclick="OFF()">Stop</button><button class="b" onclick="RUN()">Run Sprint Now</button><button class="b warn hidden" id="bK" onclick="KILL()">Kill All Running</button><button class="b" onclick="R()">Refresh</button></div></div>',
-'  <div id="PJ"></div>',
-'  <div style="text-align:center;margin-bottom:18px"><button class="b" onclick="aPF()">+ Add Project</button></div>',
-'</div>',
-'<div id="p1" class="W hidden">',
-'  <div class="card"><div class="card-h"><span class="card-t">Sprint Logs</span><button class="b sm no" onclick="CLR()">Clear All Logs</button></div><div class="lf" id="LF"></div><div id="LL"></div><div class="pgr" id="PG"></div></div>',
-'</div>',
-'<div id="p2" class="W hidden">',
-'  <div class="as"><div class="as-hd"><span class="as-lb">Night Crew Setup</span><button class="b sm" onclick="CP(\'aS\')">Copy</button></div><pre id="aS">Loading...</pre></div>',
-'  <div class="as"><div class="as-hd"><span class="as-lb">Active Projects & Agents</span><button class="b sm" onclick="CP(\'aA\')">Copy</button></div><pre id="aA">Loading...</pre></div>',
-'</div>',
-'<div class="ov" id="lm" onclick="if(event.target===this)XL()"><div class="md"><div class="md-h"><h3 id="lmt">Log</h3><button class="b sm" onclick="XL()">&#10005;</button></div><div class="md-b"><pre id="lmc"></pre></div></div></div>',
-'<div class="ov" id="fm" onclick="if(event.target===this)XF()"><div class="md" style="max-width:480px"><div class="md-h"><h3 id="fmt">Add</h3><button class="b sm" onclick="XF()">&#10005;</button></div><div class="md-b" id="fmb"></div></div></div>'
-].join("\n");
+var BODY='<div class="top"><div><h1><b>&#9632;</b> AGENTS: GO</h1><div class="top-sub" id="sub">Loading...</div><div class="top-tag">Your autonomous Claude Code agent scheduler</div></div><div class="top-r"><span class="rbadge hidden" id="rb"></span><div class="pill off" id="pill"><i></i><span>...</span></div></div></div><div class="tabs"><button class="tab on" onclick="T(0)" id="t0">Dashboard</button><button class="tab" onclick="T(1)" id="t1">Logs</button><button class="tab" onclick="T(2)" id="t2">About</button><button class="tab" onclick="T(3)" id="t3">Help</button></div><div id="p0" class="W"><div class="card"><div class="card-h"><span class="card-t">Scheduler</span></div><div class="row"><button class="b go" id="bOn" onclick="ON()">Start</button><button class="b no" id="bOff" onclick="OFF()">Stop</button><button class="b" onclick="RUN()">Run Sprint Now</button><button class="b warn hidden" id="bK" onclick="KILL()">Kill All Running</button><button class="b" onclick="R()">Refresh</button></div></div><div id="PJ"></div><div style="text-align:center;margin-bottom:18px"><button class="b" onclick="aPF()">+ Add Project</button></div></div><div id="p1" class="W hidden"><div class="card"><div class="card-h"><span class="card-t">Sprint Logs</span><button class="b sm no" onclick="CLR()">Clear All Logs</button></div><div class="lf" id="LF"></div><div id="LL"></div><div class="pgr" id="PG"></div></div></div><div id="p2" class="W hidden"><div class="as"><div class="as-hd"><span class="as-lb">Setup Guide</span><button class="b sm" onclick="CP(\'aS\')">Copy</button></div><pre id="aS">Loading...</pre></div><div class="as"><div class="as-hd"><span class="as-lb">Active Projects & Agents</span><button class="b sm" onclick="CP(\'aA\')">Copy</button></div><pre id="aA">Loading...</pre></div></div><div id="p3" class="W hidden"><div class="card"><div class="card-t" style="margin-bottom:14px">GETTING STARTED</div><p style="color:var(--t2);line-height:1.8;margin-bottom:16px">Agents: Go runs your Claude Code agents on autopilot. Each agent gets a fresh session, reads its own context, does its work, and exits cleanly.</p><h3 style="font-family:JetBrains Mono,monospace;font-size:13px;margin-bottom:10px;color:var(--ac)">Step 1: Add a Project</h3><p style="color:var(--t2);font-size:13px;line-height:1.7;margin-bottom:16px">Click <strong>+ Add Project</strong> on the Dashboard tab. Give it a name and the full path to your code directory.</p><h3 style="font-family:JetBrains Mono,monospace;font-size:13px;margin-bottom:10px;color:var(--bl)">Step 2: Add Agents</h3><p style="color:var(--t2);font-size:13px;line-height:1.7;margin-bottom:16px">Click <strong>+ Agent</strong> on your project. Give it a name (e.g. SCOUT) and a prompt. The prompt is what the agent sees when invoked, e.g. <code>"SCOUT, you\'ve been invoked. Do your thing."</code> The agent should know from its own project files what to do.</p><h3 style="font-family:JetBrains Mono,monospace;font-size:13px;margin-bottom:10px;color:var(--am)">Step 3: Set Schedule</h3><p style="color:var(--t2);font-size:13px;line-height:1.7;margin-bottom:16px">Toggle the hour chips (0-23) and day chips (Mon-Sun) on each agent card. The agent runs at every selected hour on every selected day.</p><h3 style="font-family:JetBrains Mono,monospace;font-size:13px;margin-bottom:10px;color:var(--pr)">Step 4: Start</h3><p style="color:var(--t2);font-size:13px;line-height:1.7;margin-bottom:16px">Hit the green <strong>Start</strong> button. The scheduler persists across reboots. Use <strong>Invoke Now</strong> to test any agent — it opens a live Terminal window so you can watch.</p><p style="color:var(--t3);font-size:12px;margin-top:24px">Developed by Waqas Burney & Claude &middot; <a href="https://github.com/waqasburney/agents-go" style="color:var(--ac)">GitHub</a></p></div></div><div class="ov" id="lm" onclick="if(event.target===this)XL()"><div class="md"><div class="md-h"><h3 id="lmt">Log</h3><button class="b sm" onclick="XL()">&#10005;</button></div><div class="md-b"><pre id="lmc"></pre></div></div></div><div class="ov" id="fm" onclick="if(event.target===this)XF()"><div class="md" style="max-width:480px"><div class="md-h"><h3 id="fmt">Add</h3><button class="b sm" onclick="XF()">&#10005;</button></div><div class="md-b" id="fmb"></div></div></div><div class="ob-ov" id="OB"><div class="ob"><div id="obSteps"><div class="step active"><div class="ob-icon">&#9632;</div><h2><b>Agent</b> Scheduler</h2><p>Your autonomous Claude Code agent scheduler.<br>Run agents on autopilot — day or night.</p></div><div class="step"><div class="ob-icon">&#128193;</div><h2>Add <b>Projects</b></h2><p>Point to any code directory on your Mac. Each project gets its own set of agents with independent schedules.</p></div><div class="step"><div class="ob-icon">&#129302;</div><h2>Add <b>Agents</b></h2><p>Give each agent a name and a prompt. Pick which hours and days it runs. The agent handles the rest.</p><ul><li>Toggle hours (0-23) and days (Mon-Sun)</li><li>Each session is stateless and fresh</li><li>Invoke manually anytime via Terminal</li></ul></div><div class="step"><div class="ob-icon">&#128640;</div><h2>Hit <b>Start</b></h2><p>The scheduler runs automatically via macOS launchd. Persists across reboots. Check the Logs tab for results.</p><p style="margin-top:12px"><strong>You\'re all set. Let\'s go!</strong></p></div></div><div class="ob-dots" id="obDots"></div><div class="row" style="justify-content:center"><button class="b" id="obPrev" onclick="obNav(-1)">Back</button><button class="b go" id="obNext" onclick="obNav(1)">Next</button></div></div></div>';
 
-var JS = [
-'var HL={20:"8p",21:"9p",22:"10p",23:"11p",0:"12a",1:"1a",2:"2a",3:"3a",4:"4a",5:"5a"};',
-'var AH=[20,21,22,23,0,1,2,3,4,5],CC=["c0","c1","c2","c3","c4","c5"];',
-'var cfg,logs,pg=0,PP=20,fA="",fP="",fF="",fT="";',
-'function Q(u,m,b){m=m||"GET";var o={method:m,headers:{"Content-Type":"application/json"}};if(b)o.body=JSON.stringify(b);return fetch("/api"+u,o).then(function(r){return r.json()})}',
-'function msg(s,t){var e=document.createElement("div");e.className="toast "+(t||"ok");e.textContent=s;document.body.appendChild(e);setTimeout(function(){e.remove()},3500)}',
-'function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}',
-'function gid(n){return n.toLowerCase().replace(/[^a-z0-9]+/g,"-")}',
-'function fd(s){return s<60?s+"s":Math.floor(s/60)+"m "+s%60+"s"}',
-'function T(n){for(var i=0;i<3;i++){document.getElementById("p"+i).className=i===n?"W":"W hidden";document.getElementById("t"+i).className=i===n?"tab on":"tab"}if(n===1){bF();rL()}if(n===2)AB()}',
-'',
-'function R(){Q("/status").then(function(d){',
-'  cfg=d.config;logs=d.logs||[];',
-'  var p=document.getElementById("pill");p.className="pill "+(d.loaded?"on":"off");p.querySelector("span").textContent=d.loaded?"ACTIVE":"STOPPED";',
-'  document.getElementById("bOn").disabled=d.loaded;document.getElementById("bOff").disabled=!d.loaded;',
-'  var ta=0,aa=0;cfg.projects.forEach(function(p){ta+=p.agents.length;p.agents.forEach(function(a){if(a.enabled)aa++})});',
-'  document.getElementById("sub").textContent=cfg.projects.length+" project"+(cfg.projects.length!==1?"s":"")+"  "+aa+"/"+ta+" agents";',
-'  var rn=d.running||[];var rb=document.getElementById("rb"),bk=document.getElementById("bK");',
-'  if(rn.length){rb.textContent=rn.length+" running";rb.className="rbadge";bk.className="b warn"}else{rb.className="rbadge hidden";bk.className="b warn hidden"}',
-'  rP();bF();rL()})}',
-'',
-'function rP(){',
-'  var a=document.getElementById("PJ");a.innerHTML="";',
-'  cfg.projects.forEach(function(pj,pi){',
-'    var cs="";pj.agents.forEach(function(ag,ai){',
-'      var cc=CC[ai%CC.length],ch="";',
-'      AH.forEach(function(h){ch+=\'<button class="hc\'+(ag.hours.indexOf(h)>=0?" on":"")+\'" onclick="tH(\'+pi+\',\'+ai+\',\'+h+\')">\'+((HL[h])||h)+"</button>"});',
-'      cs+=\'<div class="ag\'+(ag.enabled?"":" off")+\'"><div class="ag-top"><span class="ag-nm \'+cc+\'">\'+ag.name+\'</span><button class="tgl\'+(ag.enabled?" on":"")+\'" onclick="tA(\'+pi+\',\'+ai+\')"></button></div><div class="ag-pr" title="Click to edit" onclick="eP(\'+pi+\',\'+ai+\')">\'+esc(ag.prompt)+\'</div><div class="hrs">\'+ch+\'</div><div class="row"><button class="b sm go" onclick="IV(\'+pi+\',\'+ai+\')">Invoke Now</button><button class="b sm no" onclick="dA(\'+pi+\',\'+ai+\')">Remove</button></div></div>\'});',
-'    if(!cs)cs=\'<div class="empty" style="grid-column:1/-1">No agents. Click + Agent.</div>\';',
-'    var rm=cfg.projects.length>1?\'<button class="b sm no" onclick="dP(\'+pi+\')">Remove</button>\':"";',
-'    a.innerHTML+=\'<div class="card"><div class="pj"><div class="pj-top"><div><div class="pj-nm">\'+esc(pj.name)+\'</div><div class="pj-pt">\'+esc(pj.path)+\'</div></div><div class="pj-btns"><button class="b sm" onclick="aAF(\'+pi+\')">+ Agent</button><button class="b sm" onclick="ePF(\'+pi+\')">Edit</button>\'+rm+\'</div></div><div class="ag-g">\'+cs+\'</div></div></div>\'})}',
-'',
-'function bF(){',
-'  var ag={},pr={};logs.forEach(function(l){l.agents.forEach(function(a){ag[a]=1});(l.projects||[]).forEach(function(p){pr[p]=1})});',
-'  var h="";h+=\'<select onchange="fA=this.value;pg=0;rL()"><option value="">All Agents</option>\';',
-'  Object.keys(ag).sort().forEach(function(a){h+=\'<option value="\'+a+\'"\'+(fA===a?" selected":"")+\'>\'+a+"</option>"});',
-'  h+="</select>";h+=\'<select onchange="fP=this.value;pg=0;rL()"><option value="">All Projects</option>\';',
-'  Object.keys(pr).sort().forEach(function(p){h+=\'<option value="\'+esc(p)+\'"\'+(fP===p?" selected":"")+\'>\'+esc(p)+"</option>"});',
-'  h+="</select>";h+=\'<label>From</label><input type="date" value="\'+fF+\'" onchange="fF=this.value;pg=0;rL()">\';',
-'  h+=\'<label>To</label><input type="date" value="\'+fT+\'" onchange="fT=this.value;pg=0;rL()">\';',
-'  h+=\'<button class="b sm" onclick="cF()">Clear</button>\';',
-'  document.getElementById("LF").innerHTML=h}',
-'function cF(){fA="";fP="";fF="";fT="";pg=0;bF();rL()}',
-'',
-'function rL(){',
-'  var f=logs.filter(function(l){if(fA&&l.agents.indexOf(fA)<0)return 0;if(fP&&(!l.projects||l.projects.indexOf(fP)<0))return 0;if(fF&&l.date<fF)return 0;if(fT&&l.date>fT)return 0;return 1});',
-'  var tot=f.length,pgs=Math.ceil(tot/PP)||1;if(pg>=pgs)pg=pgs-1;',
-'  var sl=f.slice(pg*PP,(pg+1)*PP),el=document.getElementById("LL");',
-'  if(!sl.length){el.innerHTML=\'<div class="empty">No logs match.</div>\';document.getElementById("PG").innerHTML="";return}',
-'  var h="";sl.forEach(function(l){',
-'    var dt=l.file.replace("sprint_","").replace(/^manual_[a-z]+_/,"").replace(".log","");',
-'    var pt="";(l.projects||[]).forEach(function(p){pt+=\'<span class="tag p">\'+p+"</span>"});',
-'    var at="";l.agents.forEach(function(a){at+=\'<span class="tag a">\'+a+"</span>"});',
-'    var dt2="";l.success.forEach(function(s){dt2+=\'<span class="tag dur">\'+s.name+": "+fd(s.dur)+"</span>"});',
-'    var mt=l.manual?\'<span class="tag m">MANUAL</span>\':"";',
-'    h+=\'<div class="le" data-f="\'+l.file+\'" onclick="VL(this)"><div class="le-r1"><span class="le-d">\'+dt+\'</span><span class="le-sz">\'+(l.size/1024).toFixed(1)+\' KB</span></div><div class="tags">\'+mt+pt+at+dt2+"</div></div>"});',
-'  el.innerHTML=h;',
-'  var g="";if(pgs>1){g+=\'<button class="b sm" onclick="pg=Math.max(0,pg-1);rL()" \'+(pg===0?"disabled":"")+\'>Prev</button><span>\'+(pg+1)+" / "+pgs+\'</span><button class="b sm" onclick="pg=Math.min(\'+(pgs-1)+\',pg+1);rL()" \'+(pg>=pgs-1?"disabled":"")+\'>Next</button>\'}',
-'  document.getElementById("PG").innerHTML=g}',
-'',
-'function ON(){Q("/scheduler/start","POST").then(function(r){msg(r.ok?"Started":r.error,r.ok?"ok":"err");R()})}',
-'function OFF(){Q("/scheduler/stop","POST").then(function(r){msg(r.ok?"Stopped":r.error,r.ok?"ok":"err");R()})}',
-'function RUN(){msg("Sprint running...");Q("/sprint/run","POST").then(function(r){msg(r.ok?"Sprint done":"Check logs");R()})}',
-'function KILL(){if(!confirm("Kill all running Claude sessions?"))return;Q("/kill","POST").then(function(r){msg(r.ok?"Killed":"Error",r.ok?"ok":"err");R()})}',
-'function CLR(){if(!confirm("Delete ALL sprint logs? This cannot be undone."))return;Q("/logs/clear","POST").then(function(r){msg(r.ok?"All logs cleared":"Error",r.ok?"ok":"err");R()})}',
-'function tA(p,a){cfg.projects[p].agents[a].enabled=!cfg.projects[p].agents[a].enabled;Q("/config","POST",cfg).then(function(){var x=cfg.projects[p].agents[a];msg(x.name+" "+(x.enabled?"enabled":"paused"));R()})}',
-'function tH(p,a,h){var hr=cfg.projects[p].agents[a].hours;var i=hr.indexOf(h);if(i>=0)hr.splice(i,1);else hr.push(h);hr.sort(function(a,b){return(a<12?a+24:a)-(b<12?b+24:b)});Q("/config","POST",cfg).then(function(){R()})}',
-'function IV(p,a){var ag=cfg.projects[p].agents[a],pj=cfg.projects[p];msg("Opening Terminal for "+ag.name+"...");Q("/agent/invoke","POST",{projectPath:pj.path,agentName:ag.name,prompt:ag.prompt});setTimeout(R,3000)}',
-'function dA(p,a){var ag=cfg.projects[p].agents[a];if(!confirm("Remove "+ag.name+"?"))return;cfg.projects[p].agents.splice(a,1);Q("/config","POST",cfg).then(function(){msg(ag.name+" removed");R()})}',
-'function dP(p){var pj=cfg.projects[p];if(!confirm("Remove "+pj.name+"?"))return;cfg.projects.splice(p,1);Q("/config","POST",cfg).then(function(){msg(pj.name+" removed");R()})}',
-'',
-'function aPF(){document.getElementById("fmt").textContent="Add Project";document.getElementById("fmb").innerHTML=\'<div class="fg"><label class="fl">Project Name</label><input class="fi" id="f1" placeholder="My Moonshot"></div><div class="fg"><label class="fl">Directory Path</label><input class="fi" id="f2" placeholder="/Users/waqasburney/..."></div><div class="fa"><button class="b" onclick="XF()">Cancel</button><button class="b go" onclick="doAP()">Add</button></div>\';document.getElementById("fm").classList.add("open");setTimeout(function(){document.getElementById("f1").focus()},100)}',
-'function doAP(){var n=document.getElementById("f1").value.trim(),p=document.getElementById("f2").value.trim();if(!n||!p){msg("Fill both","err");return}cfg.projects.push({id:gid(n),name:n,path:p,agents:[]});Q("/config","POST",cfg).then(function(){XF();msg(n+" added");R()})}',
-'function ePF(p){var pj=cfg.projects[p];document.getElementById("fmt").textContent="Edit Project";document.getElementById("fmb").innerHTML=\'<div class="fg"><label class="fl">Name</label><input class="fi" id="f1" value="\'+esc(pj.name)+\'"></div><div class="fg"><label class="fl">Path</label><input class="fi" id="f2" value="\'+esc(pj.path)+\'"></div><div class="fa"><button class="b" onclick="XF()">Cancel</button><button class="b go" onclick="doEP(\'+p+\')">Save</button></div>\';document.getElementById("fm").classList.add("open")}',
-'function doEP(p){cfg.projects[p].name=document.getElementById("f1").value.trim();cfg.projects[p].path=document.getElementById("f2").value.trim();Q("/config","POST",cfg).then(function(){XF();msg("Updated");R()})}',
-'function aAF(p){document.getElementById("fmt").textContent="Add Agent to "+cfg.projects[p].name;document.getElementById("fmb").innerHTML=\'<div class="fg"><label class="fl">Agent Name</label><input class="fi" id="f1" placeholder="BOLT" style="text-transform:uppercase"></div><div class="fg"><label class="fl">Invocation Prompt</label><input class="fi" id="f2" placeholder="BOLT, you have been invoked. Do your thing."></div><div class="fa"><button class="b" onclick="XF()">Cancel</button><button class="b go" onclick="doAA(\'+p+\')">Add</button></div>\';document.getElementById("fm").classList.add("open");setTimeout(function(){document.getElementById("f1").focus()},100)}',
-'function doAA(p){var n=document.getElementById("f1").value.trim().toUpperCase(),pr=document.getElementById("f2").value.trim();if(!n){msg("Name needed","err");return}if(!pr)pr=n+", you have been invoked. Please do what you have to do.";cfg.projects[p].agents.push({id:gid(n),name:n,enabled:true,hours:[23],prompt:pr});Q("/config","POST",cfg).then(function(){XF();msg(n+" added");R()})}',
-'function eP(p,a){var ag=cfg.projects[p].agents[a];document.getElementById("fmt").textContent="Edit Prompt - "+ag.name;document.getElementById("fmb").innerHTML=\'<div class="fg"><label class="fl">Prompt</label><input class="fi" id="f2" value="\'+esc(ag.prompt)+\'"></div><div class="fa"><button class="b" onclick="XF()">Cancel</button><button class="b go" onclick="doEP2(\'+p+\',\'+a+\')">Save</button></div>\';document.getElementById("fm").classList.add("open");setTimeout(function(){document.getElementById("f2").focus()},100)}',
-'function doEP2(p,a){cfg.projects[p].agents[a].prompt=document.getElementById("f2").value.trim();Q("/config","POST",cfg).then(function(){XF();msg("Updated");R()})}',
-'function VL(el){var f=el.getAttribute("data-f");Q("/log/"+encodeURIComponent(f)).then(function(r){document.getElementById("lmt").textContent=f;document.getElementById("lmc").textContent=r.content;document.getElementById("lm").classList.add("open")})}',
-'function XL(){document.getElementById("lm").classList.remove("open")}',
-'function XF(){document.getElementById("fm").classList.remove("open")}',
-'function AB(){Q("/about").then(function(d){document.getElementById("aS").textContent=d.setup;document.getElementById("aA").textContent=d.agents})}',
-'function CP(id){navigator.clipboard.writeText(document.getElementById(id).textContent).then(function(){msg("Copied!")}).catch(function(){msg("Failed","err")})}',
-'document.addEventListener("keydown",function(e){if(e.key==="Escape"){XL();XF()}});',
-'R();setInterval(R,15000);'
-].join("\n");
+var JS='var HL={};for(var i=0;i<24;i++){var ap=i<12?"a":"p";var h=i===0?12:(i>12?i-12:i);HL[i]=h+ap}var DN={1:"M",2:"T",3:"W",4:"Th",5:"F",6:"Sa",7:"Su"};var AH=[];for(var i=0;i<24;i++)AH.push(i);var CC=["c0","c1","c2","c3","c4","c5"];var cfg,logs,pg=0,PP=20,fA="",fP="",fF="",fT="";function Q(u,m,b){m=m||"GET";var o={method:m,headers:{"Content-Type":"application/json"}};if(b)o.body=JSON.stringify(b);return fetch("/api"+u,o).then(function(r){return r.json()})}function msg(s,t){var e=document.createElement("div");e.className="toast "+(t||"ok");e.textContent=s;document.body.appendChild(e);setTimeout(function(){e.remove()},3500)}function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}function gid(n){return n.toLowerCase().replace(/[^a-z0-9]+/g,"-")}function fd(s){return s<60?s+"s":Math.floor(s/60)+"m "+s%60+"s"}function T(n){for(var i=0;i<4;i++){document.getElementById("p"+i).className=i===n?"W":"W hidden";document.getElementById("t"+i).className=i===n?"tab on":"tab"}if(n===1){bF();rL()}if(n===2)AB()}var obStep=0,obTotal=4;function initOB(){var c=cfg||{};if(c.onboarded)return;document.getElementById("OB").classList.add("open");obStep=0;rOB()}function rOB(){var steps=document.querySelectorAll("#obSteps .step");steps.forEach(function(s,i){s.className=i===obStep?"step active":"step"});var dots="";for(var i=0;i<obTotal;i++)dots+=\'<div class="ob-dot\'+(i===obStep?" on":"")+"\\"></div>";document.getElementById("obDots").innerHTML=dots;document.getElementById("obPrev").style.display=obStep===0?"none":"";document.getElementById("obNext").textContent=obStep===obTotal-1?"Get Started":"Next"}function obNav(d){if(d===1&&obStep===obTotal-1){document.getElementById("OB").classList.remove("open");cfg.onboarded=true;Q("/config","POST",cfg);return}obStep=Math.max(0,Math.min(obTotal-1,obStep+d));rOB()}function R(){Q("/status").then(function(d){cfg=d.config;logs=d.logs||[];var p=document.getElementById("pill");p.className="pill "+(d.loaded?"on":"off");p.querySelector("span").textContent=d.loaded?"ACTIVE":"STOPPED";document.getElementById("bOn").disabled=d.loaded;document.getElementById("bOff").disabled=!d.loaded;var ta=0,aa=0;cfg.projects.forEach(function(p){ta+=(p.agents||[]).length;(p.agents||[]).forEach(function(a){if(a.enabled)aa++})});document.getElementById("sub").textContent=cfg.projects.length+" project"+(cfg.projects.length!==1?"s":"")+"  "+aa+"/"+ta+" agents";var rn=d.running||[];var rb=document.getElementById("rb"),bk=document.getElementById("bK");if(rn.length){rb.textContent=rn.length+" running";rb.className="rbadge";bk.className="b warn"}else{rb.className="rbadge hidden";bk.className="b warn hidden"}rP();initOB()})}function rP(){var a=document.getElementById("PJ");a.innerHTML="";if(!cfg.projects.length){a.innerHTML=\'<div class="empty" style="padding:60px 0">No projects yet. Click + Add Project to get started.</div>\';return}cfg.projects.forEach(function(pj,pi){var cs="";(pj.agents||[]).forEach(function(ag,ai){var cc=CC[ai%CC.length];var ch="";AH.forEach(function(h){ch+=\'<button class="hc\'+(ag.hours.indexOf(h)>=0?" on":"")+\'" onclick="tH(\'+pi+\',\'+ai+\',\'+h+\')">\'+h+"</button>"});var dch="";[1,2,3,4,5,6,7].forEach(function(d){var days=ag.days||[1,2,3,4,5,6,7];dch+=\'<button class="dc\'+(days.indexOf(d)>=0?" on":"")+\'" onclick="tD(\'+pi+\',\'+ai+\',\'+d+\')">\'+DN[d]+"</button>"});cs+=\'<div class="ag\'+(ag.enabled?"":" off")+\'"><div class="ag-top"><span class="ag-nm \'+cc+\'">\'+ag.name+\'</span><button class="tgl\'+(ag.enabled?" on":"")+\'" onclick="tA(\'+pi+\',\'+ai+\')"></button></div><div class="ag-pr" title="Click to edit" onclick="eP(\'+pi+\',\'+ai+\')">\'+esc(ag.prompt)+\'</div><div class="days">\'+dch+\'</div><div class="hrs">\'+ch+\'</div><div class="row"><button class="b sm go" onclick="IV(\'+pi+\',\'+ai+\')">Invoke Now</button><button class="b sm no" onclick="dA(\'+pi+\',\'+ai+\')">Remove</button></div></div>\'});if(!cs)cs=\'<div class="empty" style="grid-column:1/-1">No agents. Click + Agent.</div>\';var rm=cfg.projects.length>1?\'<button class="b sm no" onclick="dP(\'+pi+\')">Remove</button>\':"";a.innerHTML+=\'<div class="card"><div class="pj"><div class="pj-top"><div><div class="pj-nm">\'+esc(pj.name)+\'</div><div class="pj-pt">\'+esc(pj.path)+\'</div></div><div class="pj-btns"><button class="b sm" onclick="aAF(\'+pi+\')">+ Agent</button><button class="b sm" onclick="ePF(\'+pi+\')">Edit</button>\'+rm+\'</div></div><div class="ag-g">\'+cs+\'</div></div></div>\'})}function bF(){var ag={},pr={};logs.forEach(function(l){l.agents.forEach(function(a){ag[a]=1});(l.projects||[]).forEach(function(p){pr[p]=1})});var h="";h+=\'<select onchange="fA=this.value;pg=0;rL()"><option value="">All Agents</option>\';Object.keys(ag).sort().forEach(function(a){h+=\'<option value="\'+a+\'"\'+(fA===a?" selected":"")+\'>\'+a+"</option>"});h+="</select>";h+=\'<select onchange="fP=this.value;pg=0;rL()"><option value="">All Projects</option>\';Object.keys(pr).sort().forEach(function(p){h+=\'<option value="\'+esc(p)+\'"\'+(fP===p?" selected":"")+\'>\'+esc(p)+"</option>"});h+="</select>";h+=\'<label>From</label><input type="date" value="\'+fF+\'" onchange="fF=this.value;pg=0;rL()">\';h+=\'<label>To</label><input type="date" value="\'+fT+\'" onchange="fT=this.value;pg=0;rL()">\';h+=\'<button class="b sm" onclick="cF()">Clear</button>\';document.getElementById("LF").innerHTML=h}function cF(){fA="";fP="";fF="";fT="";pg=0;bF();rL()}function rL(){var f=logs.filter(function(l){if(fA&&l.agents.indexOf(fA)<0)return 0;if(fP&&(!l.projects||l.projects.indexOf(fP)<0))return 0;if(fF&&l.date<fF)return 0;if(fT&&l.date>fT)return 0;return 1});var tot=f.length,pgs=Math.ceil(tot/PP)||1;if(pg>=pgs)pg=pgs-1;var sl=f.slice(pg*PP,(pg+1)*PP),el=document.getElementById("LL");if(!sl.length){el.innerHTML=\'<div class="empty">No logs.</div>\';document.getElementById("PG").innerHTML="";return}var h="";sl.forEach(function(l){var dt=l.file.replace("sprint_","").replace(/^manual_[a-z]+_/,"").replace(".log","");var pt="";(l.projects||[]).forEach(function(p){pt+=\'<span class="tag p">\'+p+"</span>"});var at="";l.agents.forEach(function(a){at+=\'<span class="tag a">\'+a+"</span>"});var dt2="";l.success.forEach(function(s){dt2+=\'<span class="tag dur">\'+s.name+": "+fd(s.dur)+"</span>"});var mt=l.manual?\'<span class="tag m">MANUAL</span>\':"";h+=\'<div class="le" data-f="\'+l.file+\'" onclick="VL(this)"><div class="le-r1"><span class="le-d">\'+dt+\'</span><span class="le-sz">\'+(l.size/1024).toFixed(1)+\' KB</span></div><div class="tags">\'+mt+pt+at+dt2+"</div></div>"});el.innerHTML=h;var g="";if(pgs>1){g+=\'<button class="b sm" onclick="pg=Math.max(0,pg-1);rL()" \'+(pg===0?"disabled":"")+\'>Prev</button><span>\'+(pg+1)+"/"+pgs+\'</span><button class="b sm" onclick="pg=Math.min(\'+(pgs-1)+\',pg+1);rL()" \'+(pg>=pgs-1?"disabled":"")+\'>Next</button>\'}document.getElementById("PG").innerHTML=g}function ON(){Q("/scheduler/start","POST").then(function(r){msg(r.ok?"Started":r.error,r.ok?"ok":"err");R()})}function OFF(){Q("/scheduler/stop","POST").then(function(r){msg(r.ok?"Stopped":r.error,r.ok?"ok":"err");R()})}function RUN(){msg("Running...");Q("/sprint/run","POST").then(function(r){msg(r.ok?"Done":"Check logs");R()})}function KILL(){if(!confirm("Kill all running sessions?"))return;Q("/kill","POST").then(function(r){msg(r.ok?"Killed":"Error",r.ok?"ok":"err");R()})}function CLR(){if(!confirm("Delete ALL logs?"))return;Q("/logs/clear","POST").then(function(r){msg(r.ok?"Cleared":"Error",r.ok?"ok":"err");R()})}function tA(p,a){cfg.projects[p].agents[a].enabled=!cfg.projects[p].agents[a].enabled;Q("/config","POST",cfg).then(function(){msg(cfg.projects[p].agents[a].name+" "+(cfg.projects[p].agents[a].enabled?"on":"paused"));R()})}function tH(p,a,h){var hr=cfg.projects[p].agents[a].hours;var i=hr.indexOf(h);if(i>=0)hr.splice(i,1);else hr.push(h);hr.sort(function(a,b){return a-b});Q("/config","POST",cfg).then(function(){R()})}function tD(p,a,d){var days=cfg.projects[p].agents[a].days;if(!days){days=[1,2,3,4,5,6,7];cfg.projects[p].agents[a].days=days}var i=days.indexOf(d);if(i>=0)days.splice(i,1);else days.push(d);days.sort();Q("/config","POST",cfg).then(function(){R()})}function IV(p,a){var ag=cfg.projects[p].agents[a],pj=cfg.projects[p];msg("Opening Terminal for "+ag.name+"...");Q("/agent/invoke","POST",{projectPath:pj.path,agentName:ag.name,prompt:ag.prompt});setTimeout(R,3000)}function dA(p,a){var ag=cfg.projects[p].agents[a];if(!confirm("Remove "+ag.name+"?"))return;cfg.projects[p].agents.splice(a,1);Q("/config","POST",cfg).then(function(){msg(ag.name+" removed");R()})}function dP(p){var pj=cfg.projects[p];if(!confirm("Remove "+pj.name+"?"))return;cfg.projects.splice(p,1);Q("/config","POST",cfg).then(function(){msg(pj.name+" removed");R()})}function aPF(){document.getElementById("fmt").textContent="Add Project";document.getElementById("fmb").innerHTML=\'<div class="fg"><label class="fl">Project Name</label><input class="fi" id="f1" placeholder="My Moonshot"></div><div class="fg"><label class="fl">Directory Path</label><input class="fi" id="f2" placeholder="/Users/you/Projects/..."></div><div class="fa"><button class="b" onclick="XF()">Cancel</button><button class="b go" onclick="doAP()">Add</button></div>\';document.getElementById("fm").classList.add("open");setTimeout(function(){document.getElementById("f1").focus()},100)}function doAP(){var n=document.getElementById("f1").value.trim(),p=document.getElementById("f2").value.trim();if(!n||!p){msg("Fill both","err");return}cfg.projects.push({id:gid(n),name:n,path:p,agents:[]});Q("/config","POST",cfg).then(function(){XF();msg(n+" added");R()})}function ePF(p){var pj=cfg.projects[p];document.getElementById("fmt").textContent="Edit Project";document.getElementById("fmb").innerHTML=\'<div class="fg"><label class="fl">Name</label><input class="fi" id="f1" value="\'+esc(pj.name)+\'"></div><div class="fg"><label class="fl">Path</label><input class="fi" id="f2" value="\'+esc(pj.path)+\'"></div><div class="fa"><button class="b" onclick="XF()">Cancel</button><button class="b go" onclick="doEP(\'+p+\')">Save</button></div>\';document.getElementById("fm").classList.add("open")}function doEP(p){cfg.projects[p].name=document.getElementById("f1").value.trim();cfg.projects[p].path=document.getElementById("f2").value.trim();Q("/config","POST",cfg).then(function(){XF();msg("Updated");R()})}function aAF(p){document.getElementById("fmt").textContent="Add Agent to "+cfg.projects[p].name;document.getElementById("fmb").innerHTML=\'<div class="fg"><label class="fl">Agent Name</label><input class="fi" id="f1" placeholder="SCOUT" style="text-transform:uppercase"></div><div class="fg"><label class="fl">Invocation Prompt</label><input class="fi" id="f2" placeholder="SCOUT, you have been invoked. Do your thing."></div><div class="fa"><button class="b" onclick="XF()">Cancel</button><button class="b go" onclick="doAA(\'+p+\')">Add</button></div>\';document.getElementById("fm").classList.add("open");setTimeout(function(){document.getElementById("f1").focus()},100)}function doAA(p){var n=document.getElementById("f1").value.trim().toUpperCase(),pr=document.getElementById("f2").value.trim();if(!n){msg("Name needed","err");return}if(!pr)pr=n+", you have been invoked. Please do what you have to do.";cfg.projects[p].agents.push({id:gid(n),name:n,enabled:true,hours:[23],days:[1,2,3,4,5,6,7],prompt:pr});Q("/config","POST",cfg).then(function(){XF();msg(n+" added");R()})}function eP(p,a){var ag=cfg.projects[p].agents[a];document.getElementById("fmt").textContent="Edit Prompt - "+ag.name;document.getElementById("fmb").innerHTML=\'<div class="fg"><label class="fl">Prompt</label><input class="fi" id="f2" value="\'+esc(ag.prompt)+\'"></div><div class="fa"><button class="b" onclick="XF()">Cancel</button><button class="b go" onclick="doEP2(\'+p+\',\'+a+\')">Save</button></div>\';document.getElementById("fm").classList.add("open");setTimeout(function(){document.getElementById("f2").focus()},100)}function doEP2(p,a){cfg.projects[p].agents[a].prompt=document.getElementById("f2").value.trim();Q("/config","POST",cfg).then(function(){XF();msg("Updated");R()})}function VL(el){var f=el.getAttribute("data-f");Q("/log/"+encodeURIComponent(f)).then(function(r){document.getElementById("lmt").textContent=f;document.getElementById("lmc").textContent=r.content;document.getElementById("lm").classList.add("open")})}function XL(){document.getElementById("lm").classList.remove("open")}function XF(){document.getElementById("fm").classList.remove("open")}function AB(){Q("/about").then(function(d){document.getElementById("aS").textContent=d.setup;document.getElementById("aA").textContent=d.agents})}function CP(id){navigator.clipboard.writeText(document.getElementById(id).textContent).then(function(){msg("Copied!")}).catch(function(){msg("Failed","err")})}document.addEventListener("keydown",function(e){if(e.key==="Escape"){XL();XF();document.getElementById("OB").classList.remove("open")}});R();setInterval(R,15000);';
 
-var HTML = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Night Crew</title><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"><style>' + CSS + '</style></head><body>' + BODY + '<script>' + JS + '</script></body></html>';
+var HTML='<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Agents: Go</title><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"><style>'+CSS+'</style></head><body>'+BODY+'<script>'+JS+'</script></body></html>';
 
 // ── Server ─────────────────────────────────────────────────────────────────
-var server = http.createServer(function(req, res) {
-  var url = new URL(req.url, "http://localhost:" + PORT);
-  var p = url.pathname;
+var server=http.createServer(function(req,res){
+  var url=new URL(req.url,"http://localhost:"+PORT);var p=url.pathname;
   function json(d,s){res.writeHead(s||200,{"Content-Type":"application/json"});res.end(JSON.stringify(d))}
-
-  if (p==="/"||p==="/index.html") { res.writeHead(200,{"Content-Type":"text/html","Cache-Control":"no-store"}); res.end(HTML); return; }
-  if (p==="/api/status"&&req.method==="GET") return json({loaded:isLoaded(),config:loadCfg(),logs:getLogs(),running:getRunning()});
-  if (p==="/api/about"&&req.method==="GET") { var c=loadCfg(); return json({setup:genAboutSetup(c),agents:genAboutAgents(c)}); }
-  if (p.indexOf("/api/log/")===0&&req.method==="GET") return json({content:getLog(decodeURIComponent(p.replace("/api/log/","")))});
-
-  if (p==="/api/config"&&req.method==="POST") {
-    var b="";req.on("data",function(c){b+=c});req.on("end",function(){
-      try { var c=JSON.parse(b);saveCfg(c);
-        if(isLoaded()){try{launchStop()}catch(e){}try{launchStart()}catch(e){}}
-        json({ok:true});
-      } catch(e){json({ok:false,error:e.message},400)}
-    }); return;
-  }
-  if (p==="/api/scheduler/start"&&req.method==="POST") {
-    try { var c=loadCfg();genScript(c);genPlist(c);launchStart();return json({ok:true}); }
-    catch(e){return json({ok:false,error:e.message})}
-  }
-  if (p==="/api/scheduler/stop"&&req.method==="POST") {
-    try{launchStop();return json({ok:true})}catch(e){return json({ok:false,error:e.message})}
-  }
-  if (p==="/api/sprint/run"&&req.method==="POST") {
-    child.exec('bash "'+SCRIPT+'"',function(err){json({ok:!err,error:err?err.message:undefined})}); return;
-  }
-  if (p==="/api/agent/invoke"&&req.method==="POST") {
-    var b2="";req.on("data",function(c){b2+=c});req.on("end",function(){
-      try { var d=JSON.parse(b2);var c=loadCfg();invokeInTerminal(d.projectPath,d.agentName,d.prompt,c.sessionTimeout,function(err){json({ok:!err,error:err?err.message:undefined})}); }
-      catch(e){json({ok:false,error:e.message},400)}
-    }); return;
-  }
-  if (p==="/api/kill"&&req.method==="POST") {
-    // Kill all claude processes (both --print and interactive)
-    try{child.execSync('pkill -f "claude.*--dangerously-skip-permissions" 2>/dev/null || true')}catch(e){}
-    // Close Terminal windows running .invoke-*.sh scripts
-    try{child.execSync("osascript -e 'tell application \"Terminal\" to close (every window whose name contains \".invoke-\")' 2>/dev/null || true")}catch(e){}
-    return json({ok:true});
-  }
-  if (p==="/api/logs/clear"&&req.method==="POST") {
-    try {
-      var files = fs.readdirSync(LOGDIR).filter(function(f){return f.endsWith(".log")});
-      files.forEach(function(f){try{fs.unlinkSync(path.join(LOGDIR,f))}catch(e){}});
-      return json({ok:true,deleted:files.length});
-    } catch(e){return json({ok:false,error:e.message})}
-  }
+  if(p==="/"||p==="/index.html"){res.writeHead(200,{"Content-Type":"text/html","Cache-Control":"no-store"});res.end(HTML);return}
+  if(p==="/api/status"&&req.method==="GET")return json({loaded:isLoaded(),config:loadCfg(),logs:getLogs(),running:getRunning()});
+  if(p==="/api/about"&&req.method==="GET"){var c=loadCfg();return json({setup:genSetup(c),agents:genAgents(c)})}
+  if(p.indexOf("/api/log/")===0&&req.method==="GET")return json({content:getLog(decodeURIComponent(p.replace("/api/log/","")))});
+  if(p==="/api/config"&&req.method==="POST"){var b="";req.on("data",function(c){b+=c});req.on("end",function(){try{var c=JSON.parse(b);saveCfg(c);if(isLoaded()){try{launchStop()}catch(e){}try{launchStart()}catch(e){}}json({ok:true})}catch(e){json({ok:false,error:e.message},400)}});return}
+  if(p==="/api/scheduler/start"&&req.method==="POST"){try{var c=loadCfg();genScript(c);genPlist(c);launchStart();return json({ok:true})}catch(e){return json({ok:false,error:e.message})}}
+  if(p==="/api/scheduler/stop"&&req.method==="POST"){try{launchStop();return json({ok:true})}catch(e){return json({ok:false,error:e.message})}}
+  if(p==="/api/sprint/run"&&req.method==="POST"){child.exec('bash "'+SCRIPT+'"',function(err){json({ok:!err,error:err?err.message:undefined})});return}
+  if(p==="/api/agent/invoke"&&req.method==="POST"){var b2="";req.on("data",function(c){b2+=c});req.on("end",function(){try{var d=JSON.parse(b2);var c=loadCfg();invokeInTerminal(d.projectPath,d.agentName,d.prompt,c.sessionTimeout,function(err){json({ok:!err,error:err?err.message:undefined})})}catch(e){json({ok:false,error:e.message},400)}});return}
+  if(p==="/api/kill"&&req.method==="POST"){try{child.execSync('pkill -f "claude.*dangerously-skip-permissions" 2>/dev/null||true')}catch(e){}try{child.execSync("osascript -e 'tell application \"Terminal\" to close (every window whose name contains \".invoke-\")' 2>/dev/null||true")}catch(e){}return json({ok:true})}
+  if(p==="/api/logs/clear"&&req.method==="POST"){try{var fl=fs.readdirSync(LOGDIR).filter(function(f){return f.endsWith(".log")});fl.forEach(function(f){try{fs.unlinkSync(path.join(LOGDIR,f))}catch(e){}});return json({ok:true})}catch(e){return json({ok:false})}}
   res.writeHead(404);res.end("Not found");
 });
 
-// ── Startup: regenerate scripts from current config ────────────────────────
-var startCfg = loadCfg();
-genScript(startCfg);
-genPlist(startCfg);
-
-server.listen(PORT, function() {
-  console.log("");
-  console.log("  NIGHT CREW v5");
-  console.log("  http://localhost:" + PORT);
-  console.log("  Claude: " + (CLAUDE_PATH || "will auto-detect at runtime"));
-  console.log("");
-});
+var sc=loadCfg();genScript(sc);genPlist(sc);
+server.listen(PORT,function(){console.log("\n  AGENTS: GO\n  http://localhost:"+PORT+"\n  Claude: "+(CLAUDE_PATH||"runtime")+"\n")});
