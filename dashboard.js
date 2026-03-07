@@ -54,6 +54,20 @@ function genScript(cfg){
   L.push('mkdir -p "$LD"');
   L.push('find "$LD" -name "sprint_*.log" -mtime +14 -delete 2>/dev/null || true');
   L.push('find "$LD" -name "manual_*.log" -mtime +14 -delete 2>/dev/null || true');
+  // Ensure Terminal closes windows on clean shell exit (idempotent)
+  L.push('TPLIST="$HOME/Library/Preferences/com.apple.Terminal.plist"');
+  L.push('TPROFILE=$(defaults read com.apple.Terminal "Default Window Settings" 2>/dev/null)');
+  L.push('if [ -n "$TPROFILE" ]; then');
+  L.push('  CUR=$(/usr/libexec/PlistBuddy -c "Print \':Window Settings:\'$TPROFILE\':shellExitAction\'" "$TPLIST" 2>/dev/null || echo "")');
+  L.push('  if [ "$CUR" != "1" ]; then');
+  L.push('    defaults export com.apple.Terminal /tmp/_agentsgo_term.plist 2>/dev/null');
+  L.push('    /usr/libexec/PlistBuddy -c "Delete \':Window Settings:\'$TPROFILE\':shellExitAction\'" /tmp/_agentsgo_term.plist 2>/dev/null');
+  L.push('    /usr/libexec/PlistBuddy -c "Add \':Window Settings:\'$TPROFILE\':shellExitAction\' integer 1" /tmp/_agentsgo_term.plist 2>/dev/null');
+  L.push('    defaults import com.apple.Terminal /tmp/_agentsgo_term.plist 2>/dev/null');
+  L.push('    killall cfprefsd 2>/dev/null || true');
+  L.push('    rm -f /tmp/_agentsgo_term.plist');
+  L.push('  fi');
+  L.push('fi');
   L.push('H=$(date +"%H")');
   L.push('M=$(date +"%M")');
   L.push('DOW=$(date +"%u")'); // 1=Mon 7=Sun
@@ -130,11 +144,9 @@ function genScript(cfg){
         L.push('DUR=$(( $(date +%s) - T0 ))');
         L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $AGENT_NAME ended after ${DUR}s" >> "$LOGFILE"');
         L.push('sleep 2');
-        L.push('# Close this agent\'s Terminal window');
-        L.push('osascript -e \'tell application "Terminal" to close (every window whose name contains ".sched-'+safeName+'")\' 2>/dev/null || true');
         L.push('AGENTEOF');
         L.push('  chmod +x "$ATMP"');
-        // Open in Terminal; append "; exit" so zsh exits after bash, as fallback
+        // Open in Terminal; "; exit" makes shell exit cleanly → Terminal auto-closes (shellExitAction=1)
         L.push('  osascript -e "tell application \\"Terminal\\"" -e "activate" -e "do script \\"bash \'$ATMP\' \'$ALF\'; exit\\"" -e "end tell" &');
       } else {
         L.push('  run_bg "'+a.name+'" "'+pr+'" "'+sp+'" '+timeout);

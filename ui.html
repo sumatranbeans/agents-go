@@ -622,6 +622,7 @@ function cF(){fA="";fP="";fF="";fT="";pg=0;bF();rL()}
 /* === Render Logs === */
 function rL(){
   var f=logs.filter(function(l){
+    if(!l.agents.length)return 0;
     if(fA&&l.agents.indexOf(fA)<0)return 0;
     if(fP&&(!l.projects||l.projects.indexOf(fP)<0))return 0;
     if(fF&&l.date<fF)return 0;
