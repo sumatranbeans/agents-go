@@ -188,7 +188,8 @@ a:hover{text-decoration:underline}
 .ob h2{font-family:"JetBrains Mono",monospace;font-size:24px;margin-bottom:12px;font-weight:700;letter-spacing:-.3px}
 .ob h2 b{color:var(--ac);font-weight:700}
 .ob p{color:var(--t2);font-size:14.5px;line-height:1.8;margin-bottom:16px}
-.ob .step{display:none;flex-direction:column;align-items:center;min-height:310px;justify-content:center}
+#obSteps{height:370px;overflow-y:auto}
+.ob .step{display:none;flex-direction:column;align-items:center;height:100%;justify-content:center;padding:4px 0}
 .ob .step.active{display:flex;animation:obFade .35s ease}
 .ob-icon{width:60px;height:60px;border-radius:16px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:24px}
 .ob-lead{font-size:15px!important;color:var(--t3)!important;margin-bottom:8px!important;letter-spacing:.3px}
@@ -341,8 +342,8 @@ a:hover{text-decoration:underline}
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
         </div>
         <h2>Add <b>Projects</b></h2>
-        <p>This scheduler manages multiple projects simultaneously. Each project points to a code directory and gets its own independent set of agents and schedules.</p>
-        <p>Click <code>+ Add Project</code> on the Dashboard to get started. You can add as many projects as you need.</p>
+        <p>Point each project to the code directory where Claude Code operates. This is where your agents will <code>cd</code> into before running.</p>
+        <p>You can manage multiple projects simultaneously &mdash; each with its own agents and independent schedules.</p>
       </div>
 
       <!-- 3: Add Agents -->
@@ -353,9 +354,8 @@ a:hover{text-decoration:underline}
         <h2>Add <b>Agents</b></h2>
         <p>Create agents within each project. Give them a name and an invocation prompt &mdash; the instruction they receive when summoned.</p>
         <ul>
-          <li>Agents read their own project and persona files to understand their role and act accordingly</li>
+          <li>Agents read their own project and persona files to understand their role &mdash; you need to set these up in your codebase</li>
           <li>Every session is completely fresh &mdash; no state or memory carries over between runs</li>
-          <li>Set how often each agent runs: which hours, which days, and at what interval</li>
         </ul>
       </div>
 
@@ -365,11 +365,11 @@ a:hover{text-decoration:underline}
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </div>
         <h2>Set <b>Schedule</b></h2>
-        <p>Configure exactly when each agent runs with three controls:</p>
+        <p>Configure how often each agent runs:</p>
         <ul>
-          <li><strong>Hours</strong> &mdash; Toggle any combination of 0&ndash;23 in your local time</li>
-          <li><strong>Days</strong> &mdash; Select which days of the week, Monday through Sunday</li>
-          <li><strong>Interval</strong> &mdash; Every 15, 30, 45, or 60 minutes within each active hour</li>
+          <li><strong>Hours</strong> &mdash; Which hours of the day (AM/PM, your local time)</li>
+          <li><strong>Days</strong> &mdash; Which days of the week</li>
+          <li><strong>Interval</strong> &mdash; Every 15, 30, 45, or 60 minutes within active hours</li>
         </ul>
       </div>
 
@@ -379,12 +379,12 @@ a:hover{text-decoration:underline}
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         </div>
         <h2><b>Watchouts</b></h2>
-        <div class="ob-note">
-          <strong>Token Usage</strong> &mdash; Each agent session consumes API tokens. An agent at 15-min intervals across 8 hours burns 32 sessions per night. Start conservative with 60-min intervals and monitor your Anthropic usage dashboard.<br><br>
-          <strong>Memory &amp; Storage</strong> &mdash; No state persists between agent sessions. Sprint logs are kept for 14 days, then automatically cleaned up.<br><br>
-          <strong>First Run</strong> &mdash; Claude Code will show a one-time permissions bypass warning. Select "Yes, I accept" &mdash; it remembers permanently.<br><br>
-          <strong>Stuck Agents</strong> &mdash; Use the "Kill All Running" button on the Dashboard to terminate any hung sessions.
-        </div>
+        <ul>
+          <li><strong>Tokens</strong> &mdash; Each session burns API tokens. Start with 60-min intervals and monitor your Anthropic usage dashboard.</li>
+          <li><strong>Storage</strong> &mdash; No state persists between runs. Logs auto-clean after 14 days.</li>
+          <li><strong>First Run</strong> &mdash; Accept the one-time Claude Code permissions prompt. It remembers permanently.</li>
+          <li><strong>Stuck Agents</strong> &mdash; Hit "Kill All Running" on the Dashboard.</li>
+        </ul>
       </div>
 
       <!-- 6: Get Started -->
