@@ -120,7 +120,8 @@ function invokeInTerminal(pp,an,pr,to,cb){
   var tmp=path.join(NCDIR,".invoke-"+an.toLowerCase()+".sh");
   var s=["#!/bin/bash",'export PATH="'+FULL_PATH+':$PATH"','','echo "================================================"','echo "  AGENTS: GO - Invoking: '+an+'"','echo "  Project: '+pp+'"','echo "  Log: '+lf+'"','echo "  Close this window to stop"','echo "================================================"','echo ""','CLAUDE_BIN=$(command -v claude 2>/dev/null||echo "")','if [ -z "$CLAUDE_BIN" ];then','  echo "ERROR: claude not found in PATH"','  echo "Install: https://docs.anthropic.com/en/docs/claude-code"','  read -n 1 -s;exit 1','fi','echo "Using: $CLAUDE_BIN"','echo ""','cd "'+pp.replace(/"/g,'\\"')+'"||{ echo "Cannot cd"; read -n 1 -s; exit 1; }','echo "Directory: $(pwd)"','echo ""','T0=$(date +%s)','echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Summoning '+an+'..."|tee -a "'+lf+'"','echo ""','claude --dangerously-skip-permissions "'+(pr||"").replace(/"/g,'\\"')+'"','DUR=$(( $(date +%s)-T0 ))','echo ""','echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] '+an+' ended after ${DUR}s"|tee -a "'+lf+'"','echo "Done. Close this window or press any key."','read -n 1 -s'].join("\n");
   fs.writeFileSync(tmp,s,{mode:0o755});
-  child.exec("osascript -e 'tell application \"Terminal\"\n  activate\n  do script \"bash \\'"+tmp+"\\'\"\nend tell'",function(err){cb(err)});
+  var as='tell application "Terminal"\nactivate\ndo script "bash \''+tmp+'\'"\nend tell';
+  child.execFile("osascript",["-e",as],function(err){cb(err)});
 }
 
 // ── About ──────────────────────────────────────────────────────────────────
