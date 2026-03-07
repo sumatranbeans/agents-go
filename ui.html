@@ -280,6 +280,7 @@ a:hover{text-decoration:underline}
         <button class="b go" id="bOn" onclick="ON()">Start</button>
         <button class="b no" id="bOff" onclick="OFF()">Stop</button>
         <button class="b warn hidden" id="bK" onclick="KILL()">Kill All Running</button>
+        <label class="row" style="gap:6px;cursor:pointer;margin-left:8px"><button class="tgl on" id="visTgl" onclick="TVM()" aria-label="Toggle visible mode"></button><span style="font-family:var(--mono);font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.3px">Run visibly</span></label>
       </div>
       <span class="card-t" id="sched-sum" style="margin:0"></span>
     </div>
@@ -553,11 +554,18 @@ function R(){
     document.getElementById("bOff").disabled=!d.loaded;
     var ta=0,aa=0;
     cfg.projects.forEach(function(p){ta+=(p.agents||[]).length;(p.agents||[]).forEach(function(a){if(a.enabled)aa++})});
-    document.getElementById("sched-sum").textContent=cfg.projects.length+" project"+(cfg.projects.length!==1?"s":"")+(" · ")+aa+" of "+ta+" agent"+(ta!==1?"s":"")+" active";
-    var rn=d.running||[];
+    var rn=d.running||[];var nrn=rn.length;var np=cfg.projects.length;
+    var parts=[];
+    if(nrn)parts.push(nrn+" running");
+    parts.push(aa+" active");
+    parts.push(ta+" total");
+    parts.push(np+" project"+(np!==1?"s":""));
+    document.getElementById("sched-sum").textContent=parts.join(" · ");
     var rb=document.getElementById("rb"),bk=document.getElementById("bK");
-    if(rn.length){rb.textContent=rn.length+" running";rb.className="rbadge";bk.className="b warn"}
+    if(nrn){rb.textContent=nrn+" running";rb.className="rbadge";bk.className="b warn"}
     else{rb.className="rbadge hidden";bk.className="b warn hidden"}
+    var vt=document.getElementById("visTgl");
+    vt.className="tgl"+(cfg.visibleMode!==false?" on":"");
     rW(d.diagnostics||{});rP();initOB();
   });
 }
@@ -638,6 +646,7 @@ function ON(){Q("/scheduler/start","POST").then(function(r){msg(r.ok?"Started":r
 function OFF(){Q("/scheduler/stop","POST").then(function(r){msg(r.ok?"Stopped":r.error,r.ok?"ok":"err");R()})}
 function RUN(){msg("Running...");Q("/sprint/run","POST").then(function(r){msg(r.ok?"Done":"Check logs");R()})}
 function KILL(){cfm("Kill all running sessions?",function(){Q("/kill","POST").then(function(r){msg(r.ok?"Killed":"Error",r.ok?"ok":"err");R()})})}
+function TVM(){cfg.visibleMode=cfg.visibleMode===false?true:false;Q("/config","POST",cfg).then(function(){msg(cfg.visibleMode!==false?"Visible mode":"Background mode");R()})}
 function CLR(){cfm("Delete ALL logs?",function(){Q("/logs/clear","POST").then(function(r){if(r.ok){msg("Cleared");Q("/status").then(function(d){cfg=d.config;logs=d.logs||[];bF();rL()})}else{msg("Error","err")}})})}
 
 /* === Agent Toggles === */
