@@ -126,13 +126,12 @@ function genScript(cfg){
         L.push('DUR=$(( $(date +%s) - T0 ))');
         L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $AGENT_NAME ended after ${DUR}s" >> "$LOGFILE"');
         L.push('sleep 2');
-        L.push('# Close this Terminal window');
-        L.push('osascript -e \'tell application "Terminal" to close (every window whose name contains ".sched-")\' &');
-        L.push('exit 0');
+        L.push('# Close this agent\'s Terminal window');
+        L.push('osascript -e \'tell application "Terminal" to close (every window whose name contains ".sched-'+safeName+'")\' 2>/dev/null || true');
         L.push('AGENTEOF');
         L.push('  chmod +x "$ATMP"');
-        // Use execFile-safe osascript: pass log file as single arg
-        L.push('  osascript -e "tell application \\"Terminal\\"" -e "activate" -e "do script \\"bash \'$ATMP\' \'$ALF\'\\"" -e "end tell" &');
+        // Open in Terminal; append "; exit" so zsh exits after bash, as fallback
+        L.push('  osascript -e "tell application \\"Terminal\\"" -e "activate" -e "do script \\"bash \'$ATMP\' \'$ALF\'; exit\\"" -e "end tell" &');
       } else {
         L.push('  run_bg "'+a.name+'" "'+pr+'" "'+sp+'" '+timeout);
       }
