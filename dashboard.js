@@ -101,8 +101,11 @@ function genPlist(cfg){
   // Find smallest interval across all active agents
   var minInterval = 60;
   cfg.projects.forEach(function(p){(p.agents||[]).forEach(function(a){if(a.enabled){var iv=a.interval||60;if(iv<minInterval)minInterval=iv}})});
-  var secs = minInterval * 60; // convert to seconds
-  var xml=['<?xml version="1.0" encoding="UTF-8"?>','<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">','<plist version="1.0">','<dict>','    <key>Label</key>','    <string>com.agentsgo</string>','    <key>ProgramArguments</key>','    <array>','        <string>/bin/bash</string>','        <string>'+SCRIPT+'</string>','    </array>','    <key>StartInterval</key>','    <integer>'+secs+'</integer>','    <key>StandardOutPath</key>','    <string>/tmp/agentsgo-stdout.log</string>','    <key>StandardErrorPath</key>','    <string>/tmp/agentsgo-stderr.log</string>','    <key>EnvironmentVariables</key>','    <dict>','        <key>PATH</key>','        <string>'+FULL_PATH+'</string>','    </dict>','</dict>','</plist>'].join("\n");
+  // Build StartCalendarInterval entries for clock-aligned firing
+  // e.g. 30-min interval → fire at :00 and :30 every hour
+  var minutes=[];for(var m=0;m<60;m+=minInterval)minutes.push(m);
+  var calEntries=minutes.map(function(m){return '        <dict>\n            <key>Minute</key>\n            <integer>'+m+'</integer>\n        </dict>'}).join("\n");
+  var xml=['<?xml version="1.0" encoding="UTF-8"?>','<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">','<plist version="1.0">','<dict>','    <key>Label</key>','    <string>com.agentsgo</string>','    <key>ProgramArguments</key>','    <array>','        <string>/bin/bash</string>','        <string>'+SCRIPT+'</string>','    </array>','    <key>StartCalendarInterval</key>','    <array>',calEntries,'    </array>','    <key>StandardOutPath</key>','    <string>/tmp/agentsgo-stdout.log</string>','    <key>StandardErrorPath</key>','    <string>/tmp/agentsgo-stderr.log</string>','    <key>EnvironmentVariables</key>','    <dict>','        <key>PATH</key>','        <string>'+FULL_PATH+'</string>','    </dict>','</dict>','</plist>'].join("\n");
   fs.writeFileSync(PPATH,xml);
 }
 
@@ -161,7 +164,7 @@ var server=http.createServer(function(req,res){
   var url=new URL(req.url,"http://localhost:"+PORT);var p=url.pathname;
   function json(d,s){res.writeHead(s||200,{"Content-Type":"application/json"});res.end(JSON.stringify(d))}
   if(p==="/"||p==="/index.html"){res.writeHead(200,{"Content-Type":"text/html","Cache-Control":"no-store"});res.end(getHTML());return}
-  if(p==="/api/status"&&req.method==="GET")return json({loaded:isLoaded(),config:loadCfg(),logs:getLogs(),running:getRunning()});
+  if(p==="/api/status"&&req.method==="GET"){var c=loadCfg();var diag={claudeFound:!!CLAUDE_PATH,badPaths:[]};c.projects.forEach(function(pr){try{fs.accessSync(pr.path)}catch(e){diag.badPaths.push({name:pr.name,path:pr.path})}});return json({loaded:isLoaded(),config:c,logs:getLogs(),running:getRunning(),diagnostics:diag})}
   if(p==="/api/about"&&req.method==="GET"){var c=loadCfg();return json({setup:genSetup(c),agents:genAgents(c)})}
   if(p.indexOf("/api/log/")===0&&req.method==="GET")return json({content:getLog(decodeURIComponent(p.replace("/api/log/","")))});
   if(p==="/api/config"&&req.method==="POST"){var b="";req.on("data",function(c){b+=c});req.on("end",function(){try{var c=JSON.parse(b);saveCfg(c);if(isLoaded()){try{launchStop()}catch(e){}try{launchStart()}catch(e){}}json({ok:true})}catch(e){json({ok:false,error:e.message},400)}});return}
