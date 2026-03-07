@@ -93,8 +93,14 @@ a:hover{text-decoration:underline}
 .hc.on{background:var(--ac);color:var(--bg);border-color:var(--ac)}
 .hc:hover{border-color:var(--t2)}
 
+/* Schedule layout */
+.sched{margin:8px 0}
+.sched-row{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.sched-lb{font-family:"JetBrains Mono",monospace;font-size:9px;color:var(--t3);min-width:30px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;flex-shrink:0}
+.sched-u{font-family:"JetBrains Mono",monospace;font-size:9px;color:var(--t3)}
+
 /* Day & interval chips */
-.days{display:flex;gap:3px;margin-bottom:6px}
+.days{display:flex;gap:3px}
 .dc{font-family:"JetBrains Mono",monospace;font-size:9px;padding:3px 5px;border-radius:4px;border:1px solid var(--bd);background:transparent;color:var(--t3);cursor:pointer;transition:all .12s}
 .dc.on{background:var(--bl);color:var(--bg);border-color:var(--bl)}
 .dc:hover{border-color:var(--t2)}
@@ -491,10 +497,10 @@ function rP(){
     var cs="";
     (pj.agents||[]).forEach(function(ag,ai){
       var cc=CC[ai%CC.length];
-      var ch="";AH.forEach(function(h){ch+='<button class="hc'+(ag.hours.indexOf(h)>=0?" on":"")+'" onclick="tH('+pi+','+ai+','+h+')">'+h+'</button>'});
+      var amCh="",pmCh="";for(var hi=0;hi<12;hi++){var hl=hi===0?"12a":(hi+"a");amCh+='<button class="hc'+(ag.hours.indexOf(hi)>=0?" on":"")+'" onclick="tH('+pi+','+ai+','+hi+')">'+hl+'</button>'}for(var hi=12;hi<24;hi++){var hl=hi===12?"12p":((hi-12)+"p");pmCh+='<button class="hc'+(ag.hours.indexOf(hi)>=0?" on":"")+'" onclick="tH('+pi+','+ai+','+hi+')">'+hl+'</button>'}
       var dch="";[1,2,3,4,5,6,7].forEach(function(d){var days=ag.days||[1,2,3,4,5,6,7];dch+='<button class="dc'+(days.indexOf(d)>=0?" on":"")+'" onclick="tD('+pi+','+ai+','+d+')">'+DN[d]+'</button>'});
       var ich="";[15,30,45,60].forEach(function(v){var cur=ag.interval||60;ich+='<button class="dc'+(cur===v?" on":"")+'" onclick="tI('+pi+','+ai+','+v+')">'+v+'</button>'});
-      cs+='<div class="ag'+(ag.enabled?"":" off")+'"><div class="ag-top"><span class="ag-nm '+cc+'">'+ag.name+'</span><button class="tgl'+(ag.enabled?" on":"")+'" onclick="tA('+pi+','+ai+')"></button></div><div class="ag-pr" title="Click to edit" onclick="eP('+pi+','+ai+')">'+esc(ag.prompt)+'</div><div class="days">'+dch+'</div><div class="row" style="margin-bottom:6px;gap:3px"><span style="font-size:9px;color:var(--t3);font-family:JetBrains Mono,monospace">Every</span>'+ich+'<span style="font-size:9px;color:var(--t3);font-family:JetBrains Mono,monospace">min</span></div><div class="hrs">'+ch+'</div><div class="row"><button class="b sm go" onclick="IV('+pi+','+ai+')">Invoke Now</button><button class="b sm no" onclick="dA('+pi+','+ai+')">Remove</button></div></div>';
+      cs+='<div class="ag'+(ag.enabled?"":" off")+'"><div class="ag-top"><span class="ag-nm '+cc+'">'+ag.name+'</span><button class="tgl'+(ag.enabled?" on":"")+'" onclick="tA('+pi+','+ai+')"></button></div><div class="ag-pr" title="Click to edit" onclick="eP('+pi+','+ai+')">'+esc(ag.prompt)+'</div><div class="sched"><div class="sched-row"><span class="sched-lb">Days</span><div class="days">'+dch+'</div></div><div class="sched-row"><span class="sched-lb">Every</span>'+ich+'<span class="sched-u">min</span></div><div class="sched-row"><span class="sched-lb">AM</span><div class="hrs">'+amCh+'</div></div><div class="sched-row"><span class="sched-lb">PM</span><div class="hrs">'+pmCh+'</div></div></div><div class="row"><button class="b sm go" onclick="IV('+pi+','+ai+')">Invoke Now</button><button class="b sm no" onclick="dA('+pi+','+ai+')">Remove</button></div></div>';
     });
     if(!cs)cs='<div class="empty" style="grid-column:1/-1">No agents. Click + Agent.</div>';
     var rm=cfg.projects.length>1?'<button class="b sm no" onclick="dP('+pi+')">Remove</button>':"";
