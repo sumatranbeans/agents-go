@@ -66,16 +66,20 @@ function genScript(cfg){
 
   if (anyInvisible) {
     // Background mode helper for agents with invisible=true
+    // Runs in a subshell (&) so it doesn't block other agents
     L.push("run_bg(){");
-    L.push('  local N="$1" P="$2" PP="$3" TO="$4" T0=$(date +%s)');
-    L.push('  cd "$PP" || { log "Cannot cd to $PP"; return; }');
+    L.push('  local N="$1" P="$2" PP="$3" TO="$4"');
     L.push('  log "Summoning ${N}..."');
-    L.push('  claude --print --dangerously-skip-permissions "$P" 2>&1|tee -a "$LF" &');
-    L.push("  local CP=$!");
-    L.push("  while kill -0 $CP 2>/dev/null;do sleep 5");
-    L.push("    [ $(( $(date +%s)-T0 )) -ge $TO ]&&{ log \"Timeout. Stopping ${N}...\";kill $CP 2>/dev/null;wait $CP 2>/dev/null;break; }");
-    L.push("  done; wait $CP 2>/dev/null||true");
-    L.push('  log "${N} ended after $(( $(date +%s)-T0 ))s"');
+    L.push("  (");
+    L.push('    T0=$(date +%s)');
+    L.push('    cd "$PP" || { echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Cannot cd to $PP" >> "$LF"; exit 1; }');
+    L.push('    claude --print --dangerously-skip-permissions "$P" 2>&1|tee -a "$LF" &');
+    L.push("    CP=$!");
+    L.push("    while kill -0 $CP 2>/dev/null;do sleep 5");
+    L.push("      [ $(( $(date +%s)-T0 )) -ge $TO ]&&{ echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Timeout. Stopping ${N}...\" >> \"$LF\";kill $CP 2>/dev/null;wait $CP 2>/dev/null;break; }");
+    L.push("    done; wait $CP 2>/dev/null||true");
+    L.push('    echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] ${N} ended after $(( $(date +%s)-T0 ))s" >> "$LF"');
+    L.push("  ) &");
     L.push("}");
   }
 
