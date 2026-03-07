@@ -36,6 +36,9 @@ SD="$(cd "$(dirname "${BASH_SOURCE[0]}" 2>/dev/null)" && pwd 2>/dev/null || echo
 if [ -f "$SD/dashboard.js" ]; then cp "$SD/dashboard.js" "$DIR/dashboard.js"
 else curl -fsSL "https://raw.githubusercontent.com/waqasburney/agents-go/main/dashboard.js" -o "$DIR/dashboard.js"; fi
 
+if [ -f "$SD/ui.html" ]; then cp "$SD/ui.html" "$DIR/ui.html"
+else curl -fsSL "https://raw.githubusercontent.com/waqasburney/agents-go/main/ui.html" -o "$DIR/ui.html"; fi
+
 if [ -f "$SD/uninstall.sh" ]; then cp "$SD/uninstall.sh" "$DIR/uninstall.sh"
 else curl -fsSL "https://raw.githubusercontent.com/waqasburney/agents-go/main/uninstall.sh" -o "$DIR/uninstall.sh"; fi
 chmod +x "$DIR/uninstall.sh"
