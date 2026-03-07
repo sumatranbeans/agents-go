@@ -44,7 +44,7 @@ a:hover{text-decoration:underline}
 .tab.on{color:var(--ac);border-bottom-color:var(--ac)}
 
 /* Layout */
-.W{max-width:1040px;margin:0 auto;padding:28px 24px}
+.W{max-width:1040px;margin:0 auto;padding:28px 24px;display:flex;flex-direction:column;min-height:calc(100vh - 106px)}
 
 /* Cards */
 .card{background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--gbr);border-radius:12px;padding:22px;margin-bottom:18px;box-shadow:0 2px 12px rgba(0,0,0,.2)}
@@ -185,7 +185,7 @@ a:hover{text-decoration:underline}
 .ag-next.off{color:var(--t3)}
 
 /* Footer */
-.footer{text-align:center;padding:32px 0 16px;font-size:12px;color:var(--t3);font-family:var(--mono)}
+.footer{text-align:center;padding:32px 0 16px;font-size:12px;color:var(--t3);font-family:var(--mono);margin-top:auto}
 
 /* Health warnings */
 .hw{background:rgba(248,113,113,.04);border:1px solid rgba(248,113,113,.15);border-radius:10px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:flex-start;gap:10px}
@@ -253,8 +253,8 @@ a:hover{text-decoration:underline}
       <rect x="9" y="9" width="13" height="13" rx="3" fill="#6ee7b7"/>
     </svg>
     <div class="top-meta">
-      <h1><span>AGENTS</span>: GO</h1>
-      <div class="top-sub" id="sub">Loading...</div>
+      <h1><span>AGENTS</span>:<span style="letter-spacing:0"> </span>GO</h1>
+      <div class="top-sub">Your autonomous Claude Code agent scheduler for macOS</div>
     </div>
   </div>
   <div class="top-r">
@@ -275,10 +275,13 @@ a:hover{text-decoration:underline}
 <div id="p0" class="W" role="tabpanel">
   <div class="card">
     <div class="card-h"><span class="card-t">Scheduler</span></div>
-    <div class="row">
-      <button class="b go" id="bOn" onclick="ON()">Start</button>
-      <button class="b no" id="bOff" onclick="OFF()">Stop</button>
-      <button class="b warn hidden" id="bK" onclick="KILL()">Kill All Running</button>
+    <div class="row" style="justify-content:space-between">
+      <div class="row">
+        <button class="b go" id="bOn" onclick="ON()">Start</button>
+        <button class="b no" id="bOff" onclick="OFF()">Stop</button>
+        <button class="b warn hidden" id="bK" onclick="KILL()">Kill All Running</button>
+      </div>
+      <span class="card-t" id="sched-sum" style="margin:0"></span>
     </div>
   </div>
   <div id="HW"></div>
@@ -364,7 +367,7 @@ a:hover{text-decoration:underline}
           </svg>
         </div>
         <h2><b>Agents:</b> Go</h2>
-        <p class="ob-lead">Autonomous scheduler for Claude Code agents</p>
+        <p class="ob-lead">Your autonomous Claude Code agent scheduler for macOS</p>
         <p>Schedule and run <strong>Claude Code CLI</strong> agents across multiple projects on autopilot. This tool is exclusively for Claude Code &mdash; each agent gets a fresh <code>claude</code> session, reads its own project context, does its work, and exits cleanly.</p>
         <div class="ob-bookmark">
           <code>http://localhost:3847</code>
@@ -550,7 +553,7 @@ function R(){
     document.getElementById("bOff").disabled=!d.loaded;
     var ta=0,aa=0;
     cfg.projects.forEach(function(p){ta+=(p.agents||[]).length;(p.agents||[]).forEach(function(a){if(a.enabled)aa++})});
-    document.getElementById("sub").textContent=cfg.projects.length+" project"+(cfg.projects.length!==1?"s":"")+" · "+aa+"/"+ta+" agents";
+    document.getElementById("sched-sum").textContent=cfg.projects.length+" project"+(cfg.projects.length!==1?"s":"")+(" · ")+aa+" of "+ta+" agent"+(ta!==1?"s":"")+" active";
     var rn=d.running||[];
     var rb=document.getElementById("rb"),bk=document.getElementById("bK");
     if(rn.length){rb.textContent=rn.length+" running";rb.className="rbadge";bk.className="b warn"}
@@ -651,11 +654,11 @@ function dP(p){var pj=cfg.projects[p];cfm("Remove "+pj.name+"?",function(){cfg.p
 /* === Forms === */
 function aPF(){
   document.getElementById("fmt").textContent="Add Project";
-  document.getElementById("fmb").innerHTML='<div class="fg"><label class="fl">Project Name</label><input class="fi" id="f1" placeholder="My Moonshot"></div><div class="fg"><label class="fl">Directory Path</label><input class="fi" id="f2" placeholder="/Users/you/Projects/..."></div><div class="fa"><button class="b" onclick="XF()">Cancel</button><button class="b go" onclick="doAP()">Add</button></div>';
+  document.getElementById("fmb").innerHTML='<div class="fg"><label class="fl">Project Name</label><input class="fi" id="f1" placeholder="My Moonshot"></div><div class="fg"><label class="fl">Local Project Path</label><input class="fi" id="f2" placeholder="/Users/you/Projects/..."></div><div class="fa"><button class="b" onclick="XF()">Cancel</button><button class="b go" onclick="doAP()">Add</button></div>';
   document.getElementById("fm").classList.add("open");
   setTimeout(function(){document.getElementById("f1").focus()},100);
 }
-function doAP(){var n=document.getElementById("f1").value.trim(),p=document.getElementById("f2").value.trim();if(!n||!p){msg("Fill both","err");return}cfg.projects.push({id:gid(n),name:n,path:p,agents:[]});Q("/config","POST",cfg).then(function(){XF();msg(n+" added");R()})}
+function doAP(){var n=document.getElementById("f1").value.trim(),p=document.getElementById("f2").value.trim();if(!n||!p){msg("Fill both","err");return}if(p.charAt(0)!=="/"){msg("Path must start with /");return}cfg.projects.push({id:gid(n),name:n,path:p,agents:[]});Q("/config","POST",cfg).then(function(){XF();msg(n+" added");R()})}
 function ePF(p){
   var pj=cfg.projects[p];
   document.getElementById("fmt").textContent="Edit Project";
@@ -669,7 +672,7 @@ function aAF(p){
   document.getElementById("fm").classList.add("open");
   setTimeout(function(){document.getElementById("f1").focus()},100);
 }
-function doAA(p){var n=document.getElementById("f1").value.trim().toUpperCase(),pr=document.getElementById("f2").value.trim();if(!n){msg("Name needed","err");return}if(!pr)pr=n+", you have been invoked. Please do what you have to do.";cfg.projects[p].agents.push({id:gid(n),name:n,enabled:true,hours:[23],days:[1,2,3,4,5],interval:60,prompt:pr});Q("/config","POST",cfg).then(function(){XF();msg(n+" added");R()})}
+function doAA(p){var n=document.getElementById("f1").value.trim().toUpperCase(),pr=document.getElementById("f2").value.trim();if(!n){msg("Name needed","err");return}if(!pr)pr=n+", you have been invoked. Please do what you have to do.";cfg.projects[p].agents.push({id:gid(n),name:n,enabled:true,hours:[0,1,2,3,4],days:[1,2,3,4,5],interval:60,prompt:pr});Q("/config","POST",cfg).then(function(){XF();msg(n+" added");R()})}
 function eP(p,a){
   var ag=cfg.projects[p].agents[a];
   document.getElementById("fmt").textContent="Edit Prompt - "+ag.name;
