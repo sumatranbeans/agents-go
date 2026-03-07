@@ -126,6 +126,8 @@ function genScript(cfg){
         L.push('DUR=$(( $(date +%s) - T0 ))');
         L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $AGENT_NAME ended after ${DUR}s" >> "$LOGFILE"');
         L.push('sleep 2');
+        L.push('# Close this Terminal window');
+        L.push('osascript -e \'tell application "Terminal" to close (every window whose name contains ".sched-")\' &');
         L.push('exit 0');
         L.push('AGENTEOF');
         L.push('  chmod +x "$ATMP"');
@@ -137,6 +139,7 @@ function genScript(cfg){
       L.push("fi");
     });
   });
+  L.push('wait 2>/dev/null || true');
   L.push('log "===== Sprint complete ====="');
   fs.writeFileSync(SCRIPT,L.join("\n"),{mode:0o755});
 }
