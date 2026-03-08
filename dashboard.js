@@ -133,6 +133,7 @@ function genScript(cfg){
         L.push('echo "  $(pwd)"');
         L.push('echo "  Timeout: '+Math.floor(timeout/60)+' min"');
         L.push('echo ""');
+        L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Project: '+proj.name+' --" >> "$LOGFILE"');
         L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Summoning $AGENT_NAME..." >> "$LOGFILE"');
         L.push('# Watchdog: kill claude after timeout');
         L.push('( sleep $TIMEOUT; for p in $(pgrep -P $$); do kill $p 2>/dev/null; done ) &');
