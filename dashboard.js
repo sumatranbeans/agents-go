@@ -58,12 +58,12 @@ function genScript(cfg){
   L.push('TPLIST="$HOME/Library/Preferences/com.apple.Terminal.plist"');
   L.push('TPROFILE=$(defaults read com.apple.Terminal "Default Window Settings" 2>/dev/null)');
   L.push('if [ -n "$TPROFILE" ]; then');
-  L.push('  CUR=$(/usr/libexec/PlistBuddy -c "Print \':Window Settings:\'$TPROFILE\':shellExitAction\'" "$TPLIST" 2>/dev/null || echo "")');
+  L.push('  CUR=$(/usr/libexec/PlistBuddy -c "Print \':Window Settings:${TPROFILE}:shellExitAction\'" "$TPLIST" 2>/dev/null || echo "")');
   L.push('  if [ "$CUR" != "1" ]; then');
-  L.push('    defaults export com.apple.Terminal /tmp/_agentsgo_term.plist 2>/dev/null');
-  L.push('    /usr/libexec/PlistBuddy -c "Delete \':Window Settings:\'$TPROFILE\':shellExitAction\'" /tmp/_agentsgo_term.plist 2>/dev/null');
-  L.push('    /usr/libexec/PlistBuddy -c "Add \':Window Settings:\'$TPROFILE\':shellExitAction\' integer 1" /tmp/_agentsgo_term.plist 2>/dev/null');
-  L.push('    defaults import com.apple.Terminal /tmp/_agentsgo_term.plist 2>/dev/null');
+  L.push('    defaults export com.apple.Terminal /tmp/_agentsgo_term.plist 2>/dev/null || true');
+  L.push('    /usr/libexec/PlistBuddy -c "Delete \':Window Settings:${TPROFILE}:shellExitAction\'" /tmp/_agentsgo_term.plist 2>/dev/null || true');
+  L.push('    /usr/libexec/PlistBuddy -c "Add \':Window Settings:${TPROFILE}:shellExitAction\' integer 1" /tmp/_agentsgo_term.plist 2>/dev/null || true');
+  L.push('    defaults import com.apple.Terminal /tmp/_agentsgo_term.plist 2>/dev/null || true');
   L.push('    killall cfprefsd 2>/dev/null || true');
   L.push('    rm -f /tmp/_agentsgo_term.plist');
   L.push('  fi');
@@ -127,6 +127,7 @@ function genScript(cfg){
         L.push('PROJECT_PATH="'+sp+'"');
         L.push('TIMEOUT='+timeout);
         L.push('LOGFILE="$1"');
+        L.push('MAINLOG="$2"');
         L.push('cd "$PROJECT_PATH" || { echo "Cannot cd to $PROJECT_PATH"; exit 1; }');
         L.push('echo ""');
         L.push('echo "  AGENTS: GO — $AGENT_NAME"');
@@ -144,11 +145,14 @@ function genScript(cfg){
         L.push('kill $WD 2>/dev/null; wait $WD 2>/dev/null');
         L.push('DUR=$(( $(date +%s) - T0 ))');
         L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $AGENT_NAME ended after ${DUR}s" >> "$LOGFILE"');
+        L.push('# Also write duration to main sprint log so all agents appear in one entry');
+        L.push('if [ -n "$MAINLOG" ]; then echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $AGENT_NAME ended after ${DUR}s" >> "$MAINLOG"; fi');
         L.push('sleep 2');
         L.push('AGENTEOF');
         L.push('  chmod +x "$ATMP"');
-        // Open in Terminal; "; exit" makes shell exit cleanly → Terminal auto-closes (shellExitAction=1)
-        L.push('  osascript -e "tell application \\"Terminal\\"" -e "activate" -e "do script \\"bash \'$ATMP\' \'$ALF\'; exit\\"" -e "end tell" &');
+        // Open in Terminal; pass both per-agent log ($ALF) and main sprint log ($LF)
+        // "; exit" makes shell exit cleanly → Terminal auto-closes (shellExitAction=1)
+        L.push('  osascript -e "tell application \\"Terminal\\"" -e "activate" -e "do script \\"bash \'$ATMP\' \'$ALF\' \'$LF\'; exit\\"" -e "end tell" &');
       } else {
         L.push('  run_bg "'+a.name+'" "'+pr+'" "'+sp+'" '+timeout);
       }
@@ -177,7 +181,13 @@ function launchStart(){try{child.execSync('launchctl unload -w "'+PPATH+'" 2>/de
 function launchStop(){child.execSync('launchctl unload -w "'+PPATH+'" 2>&1')}
 function isLoaded(){try{var o=child.execSync("launchctl list 2>/dev/null",{encoding:"utf8"}).split("\n");for(var i=0;i<o.length;i++){if(o[i].match(/\tcom\.agentsgo$/))return true}return false}catch(e){return false}}
 
-function getLogs(){try{return fs.readdirSync(LOGDIR).filter(function(f){return f.endsWith(".log")}).sort().reverse().map(function(f){var st=fs.statSync(path.join(LOGDIR,f));var t=fs.readFileSync(path.join(LOGDIR,f),"utf8");var ag=[],su=[],pr=[],m;var r1=/Summoning (\w+)/g;while((m=r1.exec(t))!==null)ag.push(m[1]);var r2=/(\w+) ended after (\d+)s/g;while((m=r2.exec(t))!==null)su.push({name:m[1],dur:parseInt(m[2])});var r3=/Project: (.+?) --/g;while((m=r3.exec(t))!==null)pr.push(m[1]);return{file:f,date:st.mtime.toISOString().slice(0,10),size:st.size,agents:ag,success:su,projects:pr,manual:f.indexOf("manual_")===0}})}catch(e){return[]}}
+function getLogs(){try{return fs.readdirSync(LOGDIR).filter(function(f){
+  // Show main sprint logs (sprint_YYYY-...) and manual logs; hide per-agent detail logs (sprint_agentname_...)
+  if(!f.endsWith(".log"))return false;
+  if(f.indexOf("manual_")===0)return true;
+  if(/^sprint_\d/.test(f))return true;
+  return false;
+}).sort().reverse().map(function(f){var st=fs.statSync(path.join(LOGDIR,f));var t=fs.readFileSync(path.join(LOGDIR,f),"utf8");var ag=[],su=[],pr=[],m;var r1=/Summoning (\w+)/g;while((m=r1.exec(t))!==null)ag.push(m[1]);var r2=/(\w+) ended after (\d+)s/g;while((m=r2.exec(t))!==null)su.push({name:m[1],dur:parseInt(m[2])});var r3=/Project: (.+?) --/g;while((m=r3.exec(t))!==null)pr.push(m[1]);return{file:f,date:st.mtime.toISOString().slice(0,10),size:st.size,agents:ag,success:su,projects:pr,manual:f.indexOf("manual_")===0}})}catch(e){return[]}}
 function getLog(f){try{return fs.readFileSync(path.join(LOGDIR,path.basename(f)),"utf8")}catch(e){return"Not found."}}
 function getRunning(){try{var o=child.execSync("ps aux 2>/dev/null",{encoding:"utf8"});return o.split("\n").filter(function(l){return l.indexOf("claude")!==-1&&l.indexOf("dangerously-skip-permissions")!==-1&&l.indexOf("grep")===-1&&l.indexOf(".sched-")===-1}).map(function(l){return{pid:l.trim().split(/\s+/)[1]}})}catch(e){return[]}}
 
