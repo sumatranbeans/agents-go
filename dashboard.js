@@ -97,8 +97,9 @@ function genScript(cfg){
     L.push("}");
   }
 
-  // Kill leftover agent script processes from previous sprint runs
+  // Kill leftover agent script processes and close stale Terminal windows from previous runs
   L.push('for OLD_PID in $(pgrep -f "\\.sched-" 2>/dev/null || true); do kill $OLD_PID 2>/dev/null; done');
+  L.push('osascript -e "tell application \\"Terminal\\"" -e "close (every window whose name contains \\"AGENTSGO_\\") saving no" -e "end tell" 2>/dev/null || true');
   L.push('log "===== Sprint - Hour:${H} Day:${DOW} ====="');
 
   cfg.projects.forEach(function(proj){
@@ -136,8 +137,9 @@ function genScript(cfg){
         L.push('echo "  $(pwd)"');
         L.push('echo "  Timeout: '+Math.floor(timeout/60)+' min"');
         L.push('echo ""');
-        L.push('# Capture our Terminal window ID so we can close it when done');
-        L.push('MY_WIN=$(osascript -e \'tell application "Terminal" to get id of front window\' 2>/dev/null)');
+        L.push('# Set unique window title for reliable auto-close');
+        L.push('AGENT_TAG="AGENTSGO_'+safeName+'"');
+        L.push("printf '\\033]0;%s\\007' \"$AGENT_TAG\"");
         L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Project: '+proj.name+' --" >> "$LOGFILE"');
         L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Summoning $AGENT_NAME..." >> "$LOGFILE"');
         L.push('# Watchdog: kill claude after timeout');
@@ -151,15 +153,19 @@ function genScript(cfg){
         L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $AGENT_NAME ended after ${DUR}s" >> "$LOGFILE"');
         L.push('# Also write duration to main sprint log so all agents appear in one entry');
         L.push('if [ -n "$MAINLOG" ]; then echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $AGENT_NAME ended after ${DUR}s" >> "$MAINLOG"; fi');
-        L.push('# Auto-close our Terminal window after a brief delay');
-        L.push('if [ -n "$MY_WIN" ]; then');
-        L.push('  nohup bash -c "sleep 3; osascript -e \'tell application \\\"Terminal\\\" to close window id \'$MY_WIN 2>/dev/null" >/dev/null 2>&1 &');
-        L.push('fi');
+        L.push('# Auto-close our Terminal window by matching title');
+        L.push("printf '\\033]0;%s\\007' \"$AGENT_TAG\"");
+        L.push('sleep 1');
+        L.push('osascript -e "tell application \\"Terminal\\"" -e "close (every window whose name contains \\"$AGENT_TAG\\") saving no" -e "end tell" 2>/dev/null || true');
         L.push('AGENTEOF');
         L.push('  chmod +x "$ATMP"');
         // Open in Terminal; pass both per-agent log ($ALF) and main sprint log ($LF)
         // "; exit" makes shell exit cleanly → Terminal auto-closes (shellExitAction=1)
         L.push('  osascript -e "tell application \\"Terminal\\"" -e "activate" -e "do script \\"bash \'$ATMP\' \'$ALF\' \'$LF\'; exit\\"" -e "end tell" &');
+        // Failsafe: close the Terminal window after timeout even if agent script fails to
+        L.push('  # Failsafe: force-close Terminal window at timeout');
+        L.push('  ( sleep '+timeout+'; osascript -e "tell application \\"Terminal\\"" -e "close (every window whose name contains \\"AGENTSGO_'+safeName+'\\") saving no" -e "end tell" 2>/dev/null || true ) &');
+        L.push('  disown 2>/dev/null || true');
       } else {
         L.push('  run_bg "'+a.name+'" "'+pr+'" "'+sp+'" '+timeout);
       }
@@ -253,7 +259,7 @@ var server=http.createServer(function(req,res){
   if(p==="/api/scheduler/stop"&&req.method==="POST"){try{launchStop();return json({ok:true})}catch(e){return json({ok:false,error:e.message})}}
   if(p==="/api/sprint/run"&&req.method==="POST"){child.exec('bash "'+SCRIPT+'"',function(err){json({ok:!err,error:err?err.message:undefined})});return}
   if(p==="/api/agent/invoke"&&req.method==="POST"){var b2="";req.on("data",function(c){b2+=c});req.on("end",function(){try{var d=JSON.parse(b2);var c=loadCfg();invokeInTerminal(d.projectPath,d.agentName,d.prompt,c.sessionTimeout,function(err){json({ok:!err,error:err?err.message:undefined})})}catch(e){json({ok:false,error:e.message},400)}});return}
-  if(p==="/api/kill"&&req.method==="POST"){try{child.execSync('pkill -f "claude.*dangerously-skip-permissions" 2>/dev/null||true')}catch(e){}try{child.execSync("osascript -e 'tell application \"Terminal\" to close (every window whose name contains \".invoke-\")' 2>/dev/null||true")}catch(e){}return json({ok:true})}
+  if(p==="/api/kill"&&req.method==="POST"){try{child.execSync('pkill -f "claude.*dangerously-skip-permissions" 2>/dev/null||true')}catch(e){}try{child.execSync("osascript -e 'tell application \"Terminal\" to close (every window whose name contains \".invoke-\")' 2>/dev/null||true")}catch(e){}try{child.execSync('osascript -e "tell application \\"Terminal\\"" -e "close (every window whose name contains \\"AGENTSGO_\\") saving no" -e "end tell" 2>/dev/null||true')}catch(e){}return json({ok:true})}
   if(p==="/api/logs/clear"&&req.method==="POST"){try{var fl=fs.readdirSync(LOGDIR).filter(function(f){return f.endsWith(".log")});fl.forEach(function(f){try{fs.unlinkSync(path.join(LOGDIR,f))}catch(e){}});return json({ok:true})}catch(e){return json({ok:false})}}
   res.writeHead(404);res.end("Not found");
 });
