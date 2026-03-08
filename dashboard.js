@@ -97,6 +97,8 @@ function genScript(cfg){
     L.push("}");
   }
 
+  // Kill leftover agent script processes from previous sprint runs
+  L.push('for OLD_PID in $(pgrep -f "\\.sched-" 2>/dev/null || true); do kill $OLD_PID 2>/dev/null; done');
   L.push('log "===== Sprint - Hour:${H} Day:${DOW} ====="');
 
   cfg.projects.forEach(function(proj){
@@ -134,6 +136,8 @@ function genScript(cfg){
         L.push('echo "  $(pwd)"');
         L.push('echo "  Timeout: '+Math.floor(timeout/60)+' min"');
         L.push('echo ""');
+        L.push('# Capture our Terminal window ID so we can close it when done');
+        L.push('MY_WIN=$(osascript -e \'tell application "Terminal" to get id of front window\' 2>/dev/null)');
         L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Project: '+proj.name+' --" >> "$LOGFILE"');
         L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Summoning $AGENT_NAME..." >> "$LOGFILE"');
         L.push('# Watchdog: kill claude after timeout');
@@ -147,7 +151,10 @@ function genScript(cfg){
         L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $AGENT_NAME ended after ${DUR}s" >> "$LOGFILE"');
         L.push('# Also write duration to main sprint log so all agents appear in one entry');
         L.push('if [ -n "$MAINLOG" ]; then echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $AGENT_NAME ended after ${DUR}s" >> "$MAINLOG"; fi');
-        L.push('sleep 2');
+        L.push('# Auto-close our Terminal window after a brief delay');
+        L.push('if [ -n "$MY_WIN" ]; then');
+        L.push('  nohup bash -c "sleep 3; osascript -e \'tell application \\\"Terminal\\\" to close window id \'$MY_WIN 2>/dev/null" >/dev/null 2>&1 &');
+        L.push('fi');
         L.push('AGENTEOF');
         L.push('  chmod +x "$ATMP"');
         // Open in Terminal; pass both per-agent log ($ALF) and main sprint log ($LF)
