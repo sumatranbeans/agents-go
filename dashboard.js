@@ -54,15 +54,15 @@ function genScript(cfg){
   L.push('mkdir -p "$LD"');
   L.push('find "$LD" -name "sprint_*.log" -mtime +14 -delete 2>/dev/null || true');
   L.push('find "$LD" -name "manual_*.log" -mtime +14 -delete 2>/dev/null || true');
-  // Ensure Terminal closes windows on clean shell exit (idempotent)
+  // Ensure Terminal always closes windows when shell exits (shellExitAction=2)
   L.push('TPLIST="$HOME/Library/Preferences/com.apple.Terminal.plist"');
   L.push('TPROFILE=$(defaults read com.apple.Terminal "Default Window Settings" 2>/dev/null)');
   L.push('if [ -n "$TPROFILE" ]; then');
   L.push('  CUR=$(/usr/libexec/PlistBuddy -c "Print \':Window Settings:${TPROFILE}:shellExitAction\'" "$TPLIST" 2>/dev/null || echo "")');
-  L.push('  if [ "$CUR" != "1" ]; then');
+  L.push('  if [ "$CUR" != "2" ]; then');
   L.push('    defaults export com.apple.Terminal /tmp/_agentsgo_term.plist 2>/dev/null || true');
   L.push('    /usr/libexec/PlistBuddy -c "Delete \':Window Settings:${TPROFILE}:shellExitAction\'" /tmp/_agentsgo_term.plist 2>/dev/null || true');
-  L.push('    /usr/libexec/PlistBuddy -c "Add \':Window Settings:${TPROFILE}:shellExitAction\' integer 1" /tmp/_agentsgo_term.plist 2>/dev/null || true');
+  L.push('    /usr/libexec/PlistBuddy -c "Add \':Window Settings:${TPROFILE}:shellExitAction\' integer 2" /tmp/_agentsgo_term.plist 2>/dev/null || true');
   L.push('    defaults import com.apple.Terminal /tmp/_agentsgo_term.plist 2>/dev/null || true');
   L.push('    killall cfprefsd 2>/dev/null || true');
   L.push('    rm -f /tmp/_agentsgo_term.plist');
@@ -97,8 +97,10 @@ function genScript(cfg){
     L.push("}");
   }
 
-  // Kill leftover agent script processes and close stale Terminal windows from previous runs
+  // Kill leftover agent processes (triggers shellExitAction to close windows), then close stragglers
   L.push('for OLD_PID in $(pgrep -f "\\.sched-" 2>/dev/null || true); do kill $OLD_PID 2>/dev/null; done');
+  L.push('pkill -f "claude.*dangerously-skip-permissions" 2>/dev/null || true');
+  L.push('sleep 3');
   L.push('osascript -e "tell application \\"Terminal\\"" -e "close (every window whose name contains \\"AGENTSGO_\\") saving no" -e "end tell" 2>/dev/null || true');
   L.push('log "===== Sprint - Hour:${H} Day:${DOW} ====="');
 
@@ -153,18 +155,15 @@ function genScript(cfg){
         L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $AGENT_NAME ended after ${DUR}s" >> "$LOGFILE"');
         L.push('# Also write duration to main sprint log so all agents appear in one entry');
         L.push('if [ -n "$MAINLOG" ]; then echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $AGENT_NAME ended after ${DUR}s" >> "$MAINLOG"; fi');
-        L.push('# Auto-close our Terminal window by matching title');
-        L.push("printf '\\033]0;%s\\007' \"$AGENT_TAG\"");
-        L.push('sleep 1');
-        L.push('osascript -e "tell application \\"Terminal\\"" -e "close (every window whose name contains \\"$AGENT_TAG\\") saving no" -e "end tell" 2>/dev/null || true');
+        L.push('exit 0');
         L.push('AGENTEOF');
         L.push('  chmod +x "$ATMP"');
         // Open in Terminal; pass both per-agent log ($ALF) and main sprint log ($LF)
-        // "; exit" makes shell exit cleanly → Terminal auto-closes (shellExitAction=1)
-        L.push('  osascript -e "tell application \\"Terminal\\"" -e "activate" -e "do script \\"bash \'$ATMP\' \'$ALF\' \'$LF\'; exit\\"" -e "end tell" &');
-        // Failsafe: close the Terminal window after timeout even if agent script fails to
-        L.push('  # Failsafe: force-close Terminal window at timeout');
-        L.push('  ( sleep '+timeout+'; osascript -e "tell application \\"Terminal\\"" -e "close (every window whose name contains \\"AGENTSGO_'+safeName+'\\") saving no" -e "end tell" 2>/dev/null || true ) &');
+        // "; exit 0" ensures clean shell exit → Terminal auto-closes (shellExitAction=2)
+        L.push('  osascript -e "tell application \\"Terminal\\"" -e "activate" -e "do script \\"bash \'$ATMP\' \'$ALF\' \'$LF\'; exit 0\\"" -e "end tell" &');
+        // Failsafe: kill agent processes at timeout → shell exits → shellExitAction closes window
+        L.push('  # Failsafe: kill agent processes at timeout, then close any remaining window');
+        L.push('  ( sleep '+timeout+'; pgrep -f "\\.sched-'+safeName+'" 2>/dev/null | xargs kill 2>/dev/null; sleep 5; osascript -e "tell application \\"Terminal\\"" -e "close (every window whose name contains \\"AGENTSGO_'+safeName+'\\") saving no" -e "end tell" 2>/dev/null || true ) &');
         L.push('  disown 2>/dev/null || true');
       } else {
         L.push('  run_bg "'+a.name+'" "'+pr+'" "'+sp+'" '+timeout);
