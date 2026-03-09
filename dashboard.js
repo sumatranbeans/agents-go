@@ -97,14 +97,26 @@ function genScript(cfg){
     L.push("}");
   }
 
-  // Kill leftover agent processes: SIGTERM → wait → SIGKILL → wait → close empty windows
+  // Kill leftover agent processes, then close their Terminal windows via Cmd+W
   L.push('for OLD_PID in $(pgrep -f "\\.sched-" 2>/dev/null || true); do kill $OLD_PID 2>/dev/null || true; done');
   L.push('pkill -f "claude.*dangerously-skip-permissions" 2>/dev/null || true');
   L.push('sleep 3');
   L.push('for OLD_PID in $(pgrep -f "\\.sched-" 2>/dev/null || true); do kill -9 $OLD_PID 2>/dev/null || true; done');
   L.push('pkill -9 -f "claude.*dangerously-skip-permissions" 2>/dev/null || true');
   L.push('sleep 3');
-  L.push('pgrep -x Terminal >/dev/null 2>&1 && osascript -e "tell application \\"Terminal\\"" -e "close (every window whose name contains \\"AGENTSGO_\\") saving no" -e "end tell" 2>/dev/null || true');
+  // Close tracked agent windows via Cmd+W (AppleScript close is broken for completed windows)
+  L.push('for WF in "$SD"/.winid-* 2>/dev/null; do');
+  L.push('  [ -f "$WF" ] || continue');
+  L.push('  WID=$(cat "$WF" 2>/dev/null)');
+  L.push('  rm -f "$WF"');
+  L.push('  [ -z "$WID" ] && continue');
+  L.push('  WEXISTS=$(osascript -e "tell application \\"Terminal\\"" -e "try" -e "name of window id $WID" -e "return \\"yes\\"" -e "on error" -e "return \\"no\\"" -e "end try" -e "end tell" 2>/dev/null)');
+  L.push('  [ "$WEXISTS" = "yes" ] || continue');
+  L.push('  osascript -e "tell application \\"Terminal\\"" -e "activate" -e "set index of window id $WID to 1" -e "end tell" 2>/dev/null');
+  L.push('  sleep 0.5');
+  L.push('  osascript -e "tell application \\"System Events\\"" -e "tell process \\"Terminal\\"" -e "keystroke \\"w\\" using command down" -e "end tell" -e "end tell" 2>/dev/null');
+  L.push('  sleep 0.5');
+  L.push('done');
   L.push('log "===== Sprint - Hour:${H} Day:${DOW} ====="');
 
   cfg.projects.forEach(function(proj){
@@ -161,12 +173,35 @@ function genScript(cfg){
         L.push('exit 0');
         L.push('AGENTEOF');
         L.push('  chmod +x "$ATMP"');
-        // Open in Terminal; pass both per-agent log ($ALF) and main sprint log ($LF)
-        // "; exit 0" ensures clean shell exit → Terminal auto-closes (shellExitAction=2)
-        L.push('  osascript -e "tell application \\"Terminal\\"" -e "activate" -e "do script \\"bash \'$ATMP\' \'$ALF\' \'$LF\'; exit 0\\"" -e "end tell" &');
-        // Failsafe: SIGTERM → SIGKILL → shell exits → shellExitAction closes window → close stragglers
-        L.push('  # Failsafe: SIGTERM → SIGKILL agent, then close any remaining window');
-        L.push('  ( set +e; sleep '+timeout+'; pgrep -f "\\.sched-'+safeName+'" 2>/dev/null | xargs kill 2>/dev/null; sleep 3; pgrep -f "\\.sched-'+safeName+'" 2>/dev/null | xargs kill -9 2>/dev/null; sleep 3; osascript -e "tell application \\"Terminal\\"" -e "close (every window whose name contains \\"AGENTSGO_'+safeName+'\\") saving no" -e "end tell" 2>/dev/null; true ) &');
+        // Open in Terminal (synchronous so we can capture window ID), then launch watcher
+        L.push('  osascript -e "tell application \\"Terminal\\"" -e "activate" -e "do script \\"bash \'$ATMP\' \'$ALF\' \'$LF\'; exit 0\\"" -e "end tell"');
+        L.push('  AGENT_WINID=$(osascript -e "tell application \\"Terminal\\" to id of front window" 2>/dev/null)');
+        L.push('  echo "$AGENT_WINID" > "$SD/.winid-'+safeName+'"');
+        // Watcher: poll window from outside, close via Cmd+W when idle or at timeout
+        var watcherTimeout = timeout + 30;
+        L.push('  ( set +e; WT0=$(date +%s); WWINID=$(cat "$SD/.winid-'+safeName+'" 2>/dev/null)');
+        L.push('    [ -z "$WWINID" ] && exit 0');
+        L.push('    while [ $(( $(date +%s) - WT0 )) -lt '+watcherTimeout+' ]; do');
+        L.push('      sleep 10');
+        L.push('      pgrep -x Terminal >/dev/null 2>&1 || exit 0');
+        L.push('      WBUSY=$(osascript -e "tell application \\"Terminal\\"" -e "try" -e "busy of window id $WWINID" -e "on error" -e "\\"gone\\"" -e "end try" -e "end tell" 2>/dev/null)');
+        L.push('      if [ "$WBUSY" = "false" ] || [ "$WBUSY" = "gone" ]; then');
+        L.push('        sleep 2');
+        L.push('        osascript -e "tell application \\"Terminal\\"" -e "activate" -e "set index of window id $WWINID to 1" -e "end tell" 2>/dev/null');
+        L.push('        sleep 0.5');
+        L.push('        osascript -e "tell application \\"System Events\\"" -e "tell process \\"Terminal\\"" -e "keystroke \\"w\\" using command down" -e "end tell" -e "end tell" 2>/dev/null');
+        L.push('        rm -f "$SD/.winid-'+safeName+'"');
+        L.push('        exit 0');
+        L.push('      fi');
+        L.push('    done');
+        L.push('    # Timeout: kill processes, then Cmd+W');
+        L.push('    pgrep -f "\\.sched-'+safeName+'" 2>/dev/null | xargs kill -9 2>/dev/null; sleep 5');
+        L.push('    osascript -e "tell application \\"Terminal\\"" -e "activate" -e "set index of window id $WWINID to 1" -e "end tell" 2>/dev/null');
+        L.push('    sleep 0.5');
+        L.push('    osascript -e "tell application \\"System Events\\"" -e "tell process \\"Terminal\\"" -e "keystroke \\"w\\" using command down" -e "end tell" -e "end tell" 2>/dev/null');
+        L.push('    rm -f "$SD/.winid-'+safeName+'"');
+        L.push('    true');
+        L.push('  ) &');
         L.push('  disown 2>/dev/null || true');
       } else {
         L.push('  run_bg "'+a.name+'" "'+pr+'" "'+sp+'" '+timeout);
