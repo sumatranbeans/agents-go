@@ -97,11 +97,14 @@ function genScript(cfg){
     L.push("}");
   }
 
-  // Kill leftover agent processes (triggers shellExitAction to close windows), then close stragglers
-  L.push('for OLD_PID in $(pgrep -f "\\.sched-" 2>/dev/null || true); do kill $OLD_PID 2>/dev/null; done');
+  // Kill leftover agent processes: SIGTERM → wait → SIGKILL → wait → close empty windows
+  L.push('for OLD_PID in $(pgrep -f "\\.sched-" 2>/dev/null || true); do kill $OLD_PID 2>/dev/null || true; done');
   L.push('pkill -f "claude.*dangerously-skip-permissions" 2>/dev/null || true');
   L.push('sleep 3');
-  L.push('osascript -e "tell application \\"Terminal\\"" -e "close (every window whose name contains \\"AGENTSGO_\\") saving no" -e "end tell" 2>/dev/null || true');
+  L.push('for OLD_PID in $(pgrep -f "\\.sched-" 2>/dev/null || true); do kill -9 $OLD_PID 2>/dev/null || true; done');
+  L.push('pkill -9 -f "claude.*dangerously-skip-permissions" 2>/dev/null || true');
+  L.push('sleep 3');
+  L.push('pgrep -x Terminal >/dev/null 2>&1 && osascript -e "tell application \\"Terminal\\"" -e "close (every window whose name contains \\"AGENTSGO_\\") saving no" -e "end tell" 2>/dev/null || true');
   L.push('log "===== Sprint - Hour:${H} Day:${DOW} ====="');
 
   cfg.projects.forEach(function(proj){
@@ -144,8 +147,8 @@ function genScript(cfg){
         L.push("printf '\\033]0;%s\\007' \"$AGENT_TAG\"");
         L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Project: '+proj.name+' --" >> "$LOGFILE"');
         L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Summoning $AGENT_NAME..." >> "$LOGFILE"');
-        L.push('# Watchdog: kill claude after timeout');
-        L.push('( sleep $TIMEOUT; for p in $(pgrep -P $$); do kill $p 2>/dev/null; done ) &');
+        L.push('# Watchdog: kill claude after timeout (SIGTERM → SIGKILL)');
+        L.push('( sleep $TIMEOUT; pgrep -P $$ -f "claude" 2>/dev/null | xargs kill 2>/dev/null; sleep 3; pgrep -P $$ -f "claude" 2>/dev/null | xargs kill -9 2>/dev/null ) &');
         L.push('WD=$!');
         L.push('T0=$(date +%s)');
         L.push('# Run claude interactively — full TUI visible');
@@ -161,9 +164,9 @@ function genScript(cfg){
         // Open in Terminal; pass both per-agent log ($ALF) and main sprint log ($LF)
         // "; exit 0" ensures clean shell exit → Terminal auto-closes (shellExitAction=2)
         L.push('  osascript -e "tell application \\"Terminal\\"" -e "activate" -e "do script \\"bash \'$ATMP\' \'$ALF\' \'$LF\'; exit 0\\"" -e "end tell" &');
-        // Failsafe: kill agent processes at timeout → shell exits → shellExitAction closes window
-        L.push('  # Failsafe: kill agent processes at timeout, then close any remaining window');
-        L.push('  ( sleep '+timeout+'; pgrep -f "\\.sched-'+safeName+'" 2>/dev/null | xargs kill 2>/dev/null; sleep 5; osascript -e "tell application \\"Terminal\\"" -e "close (every window whose name contains \\"AGENTSGO_'+safeName+'\\") saving no" -e "end tell" 2>/dev/null || true ) &');
+        // Failsafe: SIGTERM → SIGKILL → shell exits → shellExitAction closes window → close stragglers
+        L.push('  # Failsafe: SIGTERM → SIGKILL agent, then close any remaining window');
+        L.push('  ( set +e; sleep '+timeout+'; pgrep -f "\\.sched-'+safeName+'" 2>/dev/null | xargs kill 2>/dev/null; sleep 3; pgrep -f "\\.sched-'+safeName+'" 2>/dev/null | xargs kill -9 2>/dev/null; sleep 3; osascript -e "tell application \\"Terminal\\"" -e "close (every window whose name contains \\"AGENTSGO_'+safeName+'\\") saving no" -e "end tell" 2>/dev/null; true ) &');
         L.push('  disown 2>/dev/null || true');
       } else {
         L.push('  run_bg "'+a.name+'" "'+pr+'" "'+sp+'" '+timeout);
