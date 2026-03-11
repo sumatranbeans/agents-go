@@ -39,6 +39,10 @@ function loadCfg(){
 }
 function saveCfg(c){fs.writeFileSync(CFGPATH,JSON.stringify(c,null,2));genScript(c);genPlist(c)}
 
+// ── Escape helpers ────────────────────────────────────────────────────────
+// Escape a string for safe use inside bash double quotes (inside heredocs too)
+function bashEsc(s){return (s||"").replace(/\\/g,"\\\\").replace(/"/g,'\\"').replace(/\$/g,"\\$").replace(/`/g,"\\`")}
+
 // ── Generate sprint script ─────────────────────────────────────────────────
 function genScript(cfg){
   // Check if any agent uses invisible (background) mode
@@ -56,7 +60,7 @@ function genScript(cfg){
   L.push('find "$LD" -name "manual_*.log" -mtime +14 -delete 2>/dev/null || true');
   // Ensure Terminal always closes windows when shell exits (shellExitAction=2)
   L.push('TPLIST="$HOME/Library/Preferences/com.apple.Terminal.plist"');
-  L.push('TPROFILE=$(defaults read com.apple.Terminal "Default Window Settings" 2>/dev/null)');
+  L.push('TPROFILE=$(defaults read com.apple.Terminal "Default Window Settings" 2>/dev/null || true)');
   L.push('if [ -n "$TPROFILE" ]; then');
   L.push('  CUR=$(/usr/libexec/PlistBuddy -c "Print \':Window Settings:${TPROFILE}:shellExitAction\'" "$TPLIST" 2>/dev/null || echo "")');
   L.push('  if [ "$CUR" != "2" ]; then');
@@ -74,7 +78,7 @@ function genScript(cfg){
   L.push('MIN=$(echo $M | sed "s/^0//")'); // strip leading zero
   L.push('TS=$(date +"%Y-%m-%d_%H%M")');
   L.push('LF="$LD/sprint_${TS}.log"');
-  L.push('log(){ echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $*"|tee -a "$LF"; }');
+  L.push('log(){ echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $*"|tee -a "$LF" || true; }');
   L.push("# Check if minute aligns with interval: min_ok <interval>");
   L.push('min_ok(){ local iv=$1; [ $(( MIN % iv )) -eq 0 ] && return 0 || return 1; }');
 
@@ -82,12 +86,15 @@ function genScript(cfg){
     // Background mode helper for agents with invisible=true
     // Runs in a subshell (&) so it doesn't block other agents
     L.push("run_bg(){");
-    L.push('  local N="$1" P="$2" PP="$3" TO="$4"');
+    L.push('  local N="$1" P="$2" PP="$3" TO="$4" SN="$5"');
     L.push('  log "Summoning ${N}..."');
     L.push("  (");
+    L.push('    PIDFILE="$SD/.running-$SN"');
+    L.push('    echo $$ > "$PIDFILE"');
+    L.push('    trap \'rm -f "$PIDFILE"\' EXIT');
     L.push('    T0=$(date +%s)');
     L.push('    cd "$PP" || { echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Cannot cd to $PP" >> "$LF"; exit 1; }');
-    L.push('    claude --print --dangerously-skip-permissions "$P" 2>&1|tee -a "$LF" &');
+    L.push('    claude --print --dangerously-skip-permissions "$P" > >(tee -a "$LF") 2>&1 &');
     L.push("    CP=$!");
     L.push("    while kill -0 $CP 2>/dev/null;do sleep 5");
     L.push("      [ $(( $(date +%s)-T0 )) -ge $TO ]&&{ echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Timeout. Stopping ${N}...\" >> \"$LF\";kill $CP 2>/dev/null;wait $CP 2>/dev/null;break; }");
@@ -97,26 +104,31 @@ function genScript(cfg){
     L.push("}");
   }
 
-  // Kill leftover agent processes, then close their Terminal windows via Cmd+W
-  L.push('for OLD_PID in $(pgrep -f "\\.sched-" 2>/dev/null || true); do kill $OLD_PID 2>/dev/null || true; done');
-  L.push('pkill -f "claude.*dangerously-skip-permissions" 2>/dev/null || true');
-  L.push('sleep 3');
-  L.push('for OLD_PID in $(pgrep -f "\\.sched-" 2>/dev/null || true); do kill -9 $OLD_PID 2>/dev/null || true; done');
-  L.push('pkill -9 -f "claude.*dangerously-skip-permissions" 2>/dev/null || true');
-  L.push('sleep 3');
-  // Close tracked agent windows via Cmd+W (AppleScript close is broken for completed windows)
-  L.push('for WF in "$SD"/.winid-* 2>/dev/null; do');
+  // Clean up ONLY finished agent windows (never kill running agents)
+  L.push('for WF in "$SD"/.winid-*; do');
   L.push('  [ -f "$WF" ] || continue');
   L.push('  WID=$(cat "$WF" 2>/dev/null)');
-  L.push('  rm -f "$WF"');
-  L.push('  [ -z "$WID" ] && continue');
+  L.push('  [ -z "$WID" ] && { rm -f "$WF"; continue; }');
   L.push('  WEXISTS=$(osascript -e "tell application \\"Terminal\\"" -e "try" -e "name of window id $WID" -e "return \\"yes\\"" -e "on error" -e "return \\"no\\"" -e "end try" -e "end tell" 2>/dev/null)');
-  L.push('  [ "$WEXISTS" = "yes" ] || continue');
-  L.push('  osascript -e "tell application \\"Terminal\\"" -e "activate" -e "set index of window id $WID to 1" -e "end tell" 2>/dev/null');
-  L.push('  sleep 0.5');
-  L.push('  osascript -e "tell application \\"System Events\\"" -e "tell process \\"Terminal\\"" -e "keystroke \\"w\\" using command down" -e "end tell" -e "end tell" 2>/dev/null');
-  L.push('  sleep 0.5');
+  L.push('  if [ "$WEXISTS" != "yes" ]; then rm -f "$WF"; continue; fi');
+  L.push('  WBUSY=$(osascript -e "tell application \\"Terminal\\"" -e "try" -e "busy of window id $WID" -e "on error" -e "\\"gone\\"" -e "end try" -e "end tell" 2>/dev/null)');
+  L.push('  if [ "$WBUSY" = "false" ] || [ "$WBUSY" = "gone" ]; then');
+  L.push('    osascript -e "tell application \\"Terminal\\"" -e "activate" -e "set index of window id $WID to 1" -e "end tell" 2>/dev/null');
+  L.push('    sleep 0.5');
+  L.push('    osascript -e "tell application \\"System Events\\"" -e "tell process \\"Terminal\\"" -e "keystroke \\"w\\" using command down" -e "end tell" -e "end tell" 2>/dev/null');
+  L.push('    sleep 0.5');
+  L.push('    rm -f "$WF"');
+  L.push('  fi');
   L.push('done');
+  // Helper: check if agent is already running via PID file
+  L.push('agent_running(){');
+  L.push('  local PF="$SD/.running-$1"');
+  L.push('  [ -f "$PF" ] || return 1');
+  L.push('  local PID=$(cat "$PF" 2>/dev/null)');
+  L.push('  [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null && return 0');
+  L.push('  rm -f "$PF"');
+  L.push('  return 1');
+  L.push('}');
   L.push('log "===== Sprint - Hour:${H} Day:${DOW} ====="');
 
   cfg.projects.forEach(function(proj){
@@ -124,30 +136,42 @@ function genScript(cfg){
     L.push('log "-- Project: '+proj.name+' --"');
     (proj.agents||[]).forEach(function(a){
       if(!a.enabled){L.push('# '+a.name+' PAUSED');return}
-      // Day check
+      // Skip agents with no hours or days configured
+      var hours=a.hours||[];
       var days=a.days||[1,2,3,4,5,6,7];
+      if(!hours.length||!days.length){L.push('# '+a.name+' SKIPPED (no hours/days)');return}
+      // Day check
       var dayCond=days.map(function(d){return '"$DOW" == "'+d+'"'}).join(" || ");
       // Hour check
-      var hrCond=a.hours.map(function(h){return '"$H" == "'+String(h).padStart(2,"0")+'"'}).join(" || ");
-      var interval = a.interval || 60;
+      var hrCond=hours.map(function(h){return '"$H" == "'+String(h).padStart(2,"0")+'"'}).join(" || ");
+      var interval = [15,30,45,60].indexOf(a.interval)!==-1 ? a.interval : 60;
       var timeout = (interval - 1) * 60; // 1 minute before next scheduled run
-      var pr=(a.prompt||a.name+", go.").replace(/"/g,'\\"');
+      var pr=bashEsc(a.prompt||a.name+", go.");
+      var safeName = (a.id||a.name).toLowerCase().replace(/[^a-z0-9]/g,"");
       L.push("if [[ ("+dayCond+") && ("+hrCond+") ]] && min_ok "+interval+";then");
+      // Skip if this agent is still running from a previous cycle
+      L.push('  if agent_running "'+safeName+'"; then');
+      L.push('    log "'+a.name+' still running, skipping this cycle"');
+      L.push('  else');
       if (!a.invisible) {
         // Visible mode: write a self-contained temp script per agent, open in Terminal
-        var safeName = a.name.toLowerCase().replace(/[^a-z0-9]/g,"");
         L.push('  log "Summoning '+a.name+' (visible)..."');
         L.push('  ATMP="$SD/.sched-'+safeName+'.sh"');
         L.push('  ALF="$LD/sprint_'+safeName+'_${TS}.log"');
-        L.push('  cat > "$ATMP" << \'AGENTEOF\'');
+        var heredocTag = 'AGENTEOF_'+safeName.toUpperCase();
+        L.push('  cat > "$ATMP" << \''+heredocTag+'\'');
         L.push('#!/bin/bash');
         L.push('export PATH="'+FULL_PATH+':$PATH"');
-        L.push('AGENT_NAME="'+a.name+'"');
+        L.push('AGENT_NAME="'+bashEsc(a.name)+'"');
         L.push('AGENT_PROMPT="'+pr+'"');
-        L.push('PROJECT_PATH="'+sp+'"');
+        L.push('PROJECT_PATH="'+bashEsc(proj.path)+'"');
         L.push('TIMEOUT='+timeout);
         L.push('LOGFILE="$1"');
         L.push('MAINLOG="$2"');
+        L.push('# Track this agent as running (PID file for skip-if-running logic)');
+        L.push('PIDFILE="$HOME/.agents-go/.running-'+safeName+'"');
+        L.push('echo $$ > "$PIDFILE"');
+        L.push('trap \'rm -f "$PIDFILE"\' EXIT');
         L.push('cd "$PROJECT_PATH" || { echo "Cannot cd to $PROJECT_PATH"; exit 1; }');
         L.push('echo ""');
         L.push('echo "  AGENTS: GO — $AGENT_NAME"');
@@ -160,7 +184,7 @@ function genScript(cfg){
         L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Project: '+proj.name+' --" >> "$LOGFILE"');
         L.push('echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] Summoning $AGENT_NAME..." >> "$LOGFILE"');
         L.push('# Watchdog: kill claude after timeout (SIGTERM → SIGKILL)');
-        L.push('( sleep $TIMEOUT; pgrep -P $$ -f "claude" 2>/dev/null | xargs kill 2>/dev/null; sleep 3; pgrep -P $$ -f "claude" 2>/dev/null | xargs kill -9 2>/dev/null ) &');
+        L.push('( sleep $TIMEOUT; pgrep -P $$ -f "claude" 2>/dev/null | xargs -r kill 2>/dev/null; sleep 3; pgrep -P $$ -f "claude" 2>/dev/null | xargs -r kill -9 2>/dev/null ) &');
         L.push('WD=$!');
         L.push('T0=$(date +%s)');
         L.push('# Run claude interactively — full TUI visible');
@@ -171,7 +195,7 @@ function genScript(cfg){
         L.push('# Also write duration to main sprint log so all agents appear in one entry');
         L.push('if [ -n "$MAINLOG" ]; then echo "[$(date \'+%Y-%m-%d %H:%M:%S\')] $AGENT_NAME ended after ${DUR}s" >> "$MAINLOG"; fi');
         L.push('exit 0');
-        L.push('AGENTEOF');
+        L.push(heredocTag);
         L.push('  chmod +x "$ATMP"');
         // Open in Terminal (synchronous so we can capture window ID), then launch watcher
         L.push('  osascript -e "tell application \\"Terminal\\"" -e "activate" -e "do script \\"bash \'$ATMP\' \'$ALF\' \'$LF\'; exit 0\\"" -e "end tell"');
@@ -195,7 +219,7 @@ function genScript(cfg){
         L.push('      fi');
         L.push('    done');
         L.push('    # Timeout: kill processes, then Cmd+W');
-        L.push('    pgrep -f "\\.sched-'+safeName+'" 2>/dev/null | xargs kill -9 2>/dev/null; sleep 5');
+        L.push('    pgrep -f "\\.sched-'+safeName+'" 2>/dev/null | xargs -r kill -9 2>/dev/null; sleep 5');
         L.push('    osascript -e "tell application \\"Terminal\\"" -e "activate" -e "set index of window id $WWINID to 1" -e "end tell" 2>/dev/null');
         L.push('    sleep 0.5');
         L.push('    osascript -e "tell application \\"System Events\\"" -e "tell process \\"Terminal\\"" -e "keystroke \\"w\\" using command down" -e "end tell" -e "end tell" 2>/dev/null');
@@ -204,8 +228,9 @@ function genScript(cfg){
         L.push('  ) &');
         L.push('  disown 2>/dev/null || true');
       } else {
-        L.push('  run_bg "'+a.name+'" "'+pr+'" "'+sp+'" '+timeout);
+        L.push('  run_bg "'+bashEsc(a.name)+'" "'+pr+'" "'+bashEsc(proj.path)+'" '+timeout+' "'+safeName+'"');
       }
+      L.push("  fi"); // end agent_running else
       L.push("fi");
     });
   });
@@ -218,7 +243,8 @@ function genScript(cfg){
 function genPlist(cfg){
   // Find smallest interval across all active agents
   var minInterval = 60;
-  cfg.projects.forEach(function(p){(p.agents||[]).forEach(function(a){if(a.enabled){var iv=a.interval||60;if(iv<minInterval)minInterval=iv}})});
+  cfg.projects.forEach(function(p){(p.agents||[]).forEach(function(a){if(a.enabled){var iv=[15,30,45,60].indexOf(a.interval)!==-1?a.interval:60;if(iv<minInterval)minInterval=iv}})});
+  if(minInterval<=0)minInterval=60;
   // Build StartCalendarInterval entries for clock-aligned firing
   // e.g. 30-min interval → fire at :00 and :30 every hour
   var minutes=[];for(var m=0;m<60;m+=minInterval)minutes.push(m);
@@ -291,7 +317,7 @@ var server=http.createServer(function(req,res){
   if(p==="/api/status"&&req.method==="GET"){var c=loadCfg();var diag={claudeFound:!!CLAUDE_PATH,badPaths:[]};c.projects.forEach(function(pr){try{fs.accessSync(pr.path)}catch(e){diag.badPaths.push({name:pr.name,path:pr.path})}});return json({loaded:isLoaded(),config:c,logs:getLogs(),running:getRunning(),diagnostics:diag})}
   if(p==="/api/about"&&req.method==="GET"){var c=loadCfg();return json({setup:genSetup(c),agents:genAgents(c)})}
   if(p.indexOf("/api/log/")===0&&req.method==="GET")return json({content:getLog(decodeURIComponent(p.replace("/api/log/","")))});
-  if(p==="/api/config"&&req.method==="POST"){var b="";req.on("data",function(c){b+=c});req.on("end",function(){try{var c=JSON.parse(b);saveCfg(c);if(isLoaded()){try{launchStop()}catch(e){}try{launchStart()}catch(e){}}json({ok:true})}catch(e){json({ok:false,error:e.message},400)}});return}
+  if(p==="/api/config"&&req.method==="POST"){var b="";req.on("data",function(c){b+=c});req.on("end",function(){try{var c=JSON.parse(b);saveCfg(c);if(isLoaded()){try{launchStop()}catch(e){}launchStart()}json({ok:true})}catch(e){json({ok:false,error:e.message},400)}});return}
   if(p==="/api/scheduler/start"&&req.method==="POST"){try{var c=loadCfg();genScript(c);genPlist(c);launchStart();return json({ok:true})}catch(e){return json({ok:false,error:e.message})}}
   if(p==="/api/scheduler/stop"&&req.method==="POST"){try{launchStop();return json({ok:true})}catch(e){return json({ok:false,error:e.message})}}
   if(p==="/api/sprint/run"&&req.method==="POST"){child.exec('bash "'+SCRIPT+'"',function(err){json({ok:!err,error:err?err.message:undefined})});return}
@@ -301,5 +327,10 @@ var server=http.createServer(function(req,res){
   res.writeHead(404);res.end("Not found");
 });
 
+// Truncate launchd logs on startup to prevent unbounded growth
+try{fs.writeFileSync("/tmp/agentsgo-stdout.log","")}catch(e){}
+try{fs.writeFileSync("/tmp/agentsgo-stderr.log","")}catch(e){}
 var sc=loadCfg();genScript(sc);genPlist(sc);
+// Reload scheduler if it was previously running, so it picks up the freshly generated sprint.sh
+if(isLoaded()){try{launchStop()}catch(e){}try{launchStart()}catch(e){}}
 server.listen(PORT,function(){console.log("\n  AGENTS: GO\n  http://localhost:"+PORT+"\n  Claude: "+(CLAUDE_PATH||"runtime")+"\n")});
